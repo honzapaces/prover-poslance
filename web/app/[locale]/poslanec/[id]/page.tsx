@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { hasLocale, getDictionary } from "@/lib/i18n";
-import { getMpById } from "@/lib/queries";
+import { getMpById, getMpAttendanceByMonth } from "@/lib/queries";
+import { AttendanceChart } from "@/components/AttendanceChart";
 
 function StatBar({
   label,
@@ -47,7 +48,10 @@ export default async function MpProfilePage({
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
 
-  const mp = await getMpById(Number(id));
+  const [mp, attendance] = await Promise.all([
+    getMpById(Number(id)),
+    getMpAttendanceByMonth(Number(id)),
+  ]);
   if (!mp) notFound();
 
   const fullName = [mp.pred, mp.jmeno, mp.prijmeni, mp.za]
@@ -281,6 +285,25 @@ export default async function MpProfilePage({
           unit=" %"
         />
       </div>
+
+      {/* Attendance chart */}
+      {attendance.length > 0 && (
+        <div className="cr-card p-6 mb-4">
+          <h2
+            className="section-accent"
+            style={{
+              fontFamily: "'EB Garamond', serif",
+              color: "var(--cr-text)",
+              fontWeight: 700,
+              fontSize: "1.2rem",
+              marginBottom: "1.25rem",
+            }}
+          >
+            {t.attendance.title}
+          </h2>
+          <AttendanceChart data={attendance} label={t.attendance.attendancePct} />
+        </div>
+      )}
 
       {/* Activity stats */}
       <div className="cr-card p-6">

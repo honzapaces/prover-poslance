@@ -94,6 +94,79 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
   return rows[0] ?? null;
 }
 
+export interface PartyStats {
+  id_organ: number;
+  party_short: string;
+  party_name: string;
+  mp_count: number;
+  avg_participation: number;
+  total_bills: number;
+  total_speeches: number;
+  total_interpellations: number;
+}
+
+export interface MonthlyAttendance {
+  month: string; // "YYYY-MM"
+  votes_total: number;
+  votes_present: number;
+  attendance_pct: number;
+}
+
+/** Party aggregate stats for current term */
+export async function getPartyList(): Promise<PartyStats[]> {
+  return query<PartyStats>(`
+    SELECT
+      o.id_organ,
+      o.zkratka                                    AS party_short,
+      o.nazev_organu_cz                            AS party_name,
+      COUNT(DISTINCT p.id_poslanec)                AS mp_count,
+      ROUND(AVG(s.participation_pct), 1)           AS avg_participation,
+      SUM(s.bills_authored)                        AS total_bills,
+      SUM(s.speeches_count)                        AS total_speeches,
+      SUM(s.interpellations_count)                 AS total_interpellations
+    FROM organy o
+    JOIN typ_organu t  ON t.id_typ_org   = o.id_typ_organu
+                      AND t.nazev_typ_org_cz LIKE '%klub%'
+    JOIN zarazeni z    ON z.id_of        = o.id_organ
+                      AND z.cl_funkce    = 0
+                      AND z.do_o         IS NULL
+    JOIN poslanec p    ON p.id_osoba     = z.id_osoba
+    JOIN mp_stats s    ON s.id_poslanec  = p.id_poslanec
+    GROUP BY o.id_organ, o.zkratka, o.nazev_organu_cz
+    ORDER BY avg_participation DESC
+  `);
+}
+
+/** Monthly attendance for a single MP (current term: 2021–2026) */
+export async function getMpAttendanceByMonth(id: number): Promise<MonthlyAttendance[]> {
+  return query<MonthlyAttendance>(
+    `
+    SELECT
+      SUBSTR(hh.datum, 1, 7)                                                        AS month,
+      COUNT(*)                                                                       AS votes_total,
+      SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END)    AS votes_present,
+      ROUND(
+        100.0 * SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END)
+        / NULLIF(COUNT(*), 0), 1
+      )                                                                              AS attendance_pct
+    FROM hl_poslanec hp
+    JOIN (
+      SELECT id_hlasovani, datum FROM hl2021s
+      UNION ALL SELECT id_hlasovani, datum FROM hl2022s
+      UNION ALL SELECT id_hlasovani, datum FROM hl2023s
+      UNION ALL SELECT id_hlasovani, datum FROM hl2024s
+      UNION ALL SELECT id_hlasovani, datum FROM hl2025s
+      UNION ALL SELECT id_hlasovani, datum FROM hl2026s
+    ) hh ON hh.id_hlasovani = hp.id_hlasovani
+    WHERE hp.id_poslanec = ?
+      AND hh.datum IS NOT NULL
+    GROUP BY SUBSTR(hh.datum, 1, 7)
+    ORDER BY month ASC
+    `,
+    [id]
+  );
+}
+
 /** Last ETL run timestamp (ISO string or null) */
 export async function getLastUpdated(): Promise<string | null> {
   const rows = await query<{ last_updated: string | null }>(

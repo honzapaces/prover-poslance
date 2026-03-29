@@ -2,6 +2,8 @@
   "nav": {
     "home": "Přehled",
     "mps": "Poslanci",
+    "parties": "Strany",
+    "comparison": "Porovnání",
     "title": "Prověř poslance"
   },
   "home": {
@@ -31,6 +33,24 @@
     "votesExcused": "Omluven",
     "profile": "Profil",
     "viewProfile": "Zobrazit profil"
+  },
+  "parties": {
+    "title": "Parlamentní strany",
+    "avgParticipation": "Průměrná účast",
+    "mpCount": "poslanců",
+    "bills": "Tisky",
+    "speeches": "Projevy",
+    "interpellations": "Interpelace"
+  },
+  "comparison": {
+    "title": "Porovnání poslanců",
+    "selectFirst": "První poslanec",
+    "selectSecond": "Druhý poslanec",
+    "selectPlaceholder": "— vyberte poslance —"
+  },
+  "attendance": {
+    "title": "Docházka po měsících",
+    "attendancePct": "Účast (%)"
   },
   "footer": {
     "dataSource": "Data: Poslanecká sněmovna ČR",

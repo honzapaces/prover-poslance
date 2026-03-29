@@ -2,6 +2,8 @@
   "nav": {
     "home": "Overview",
     "mps": "MPs",
+    "parties": "Parties",
+    "comparison": "Compare",
     "title": "Check your MP"
   },
   "home": {
@@ -31,6 +33,24 @@
     "votesExcused": "Excused",
     "profile": "Profile",
     "viewProfile": "View profile"
+  },
+  "parties": {
+    "title": "Parliamentary parties",
+    "avgParticipation": "Avg. participation",
+    "mpCount": "MPs",
+    "bills": "Bills",
+    "speeches": "Speeches",
+    "interpellations": "Interpellations"
+  },
+  "comparison": {
+    "title": "Compare MPs",
+    "selectFirst": "First MP",
+    "selectSecond": "Second MP",
+    "selectPlaceholder": "— select an MP —"
+  },
+  "attendance": {
+    "title": "Monthly attendance",
+    "attendancePct": "Attendance (%)"
   },
   "footer": {
     "dataSource": "Data: Chamber of Deputies of the Czech Republic",

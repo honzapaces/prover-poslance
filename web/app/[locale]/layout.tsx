@@ -68,6 +68,20 @@ export default async function LocaleLayout({
             >
               {t.nav.mps}
             </Link>
+            <Link
+              href={`/${locale}/strany`}
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
+            >
+              {t.nav.parties}
+            </Link>
+            <Link
+              href={`/${locale}/porovnani`}
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
+            >
+              {t.nav.comparison}
+            </Link>
 
             {/* Language switcher */}
             <div className="ml-auto flex items-center gap-2">
