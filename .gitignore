@@ -16,3 +16,6 @@ web/.env.local
 # Next.js
 web/.next/
 web/node_modules/
+
+# Vercel
+.vercel/
