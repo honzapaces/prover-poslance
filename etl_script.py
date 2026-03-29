@@ -1,5 +1,7 @@
 import argparse
 import datetime
+import hashlib
+import json
 import math
 import os
 import re
@@ -224,37 +226,93 @@ def extract_schema_from_html(html_file_path: str) -> dict:
     return dynamic_schema
 
 
-def download_and_extract_zip(zip_url: str, extract_to_dir: str):
-    """Download a ZIP and extract to extract_to_dir. Skips if .unl files already exist."""
-    existing_unl = [f for f in os.listdir(extract_to_dir) if f.endswith('.unl')] if os.path.isdir(extract_to_dir) else []
-    if existing_unl:
-        logger.info(f"Skipping download of {zip_url} — {len(existing_unl)} .unl file(s) already extracted.")
-        return extract_to_dir
+def download_and_extract_zip(
+    zip_url: str,
+    extract_to_dir: str,
+    zip_state: dict,
+    force: bool = False,
+) -> tuple[str | None, bool]:
+    """Download a ZIP and extract to extract_to_dir.
+
+    Returns (extract_to_dir | None, data_was_new).
+    data_was_new=False means the ZIP is unchanged and already loaded to DB — skip DB load.
+    zip_state is mutated in place with updated ETag/hash for the URL.
+    """
+    url_state = zip_state.get(zip_url, {})
+
+    if url_state and not force:
+        try:
+            head = requests.head(zip_url, timeout=10)
+            head.raise_for_status()
+            server_etag = head.headers.get("ETag")
+            server_lm = head.headers.get("Last-Modified")
+
+            if server_etag and server_etag == url_state.get("etag"):
+                if url_state.get("processed_at"):
+                    logger.info(f"Skipping {zip_url} — ETag unchanged, data already in DB.")
+                    return extract_to_dir, False
+
+            elif (not server_etag) and server_lm and server_lm == url_state.get("last_modified"):
+                if url_state.get("processed_at"):
+                    logger.info(f"Skipping {zip_url} — Last-Modified unchanged, data already in DB.")
+                    return extract_to_dir, False
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"HEAD request for {zip_url} failed ({e}), falling back to full download.")
+
+    has_unl = os.path.isdir(extract_to_dir) and any(f.endswith('.unl') for f in os.listdir(extract_to_dir))
+    if has_unl and not force:
+        if url_state.get("processed_at"):
+            logger.info(f"Skipping {zip_url} — .unl files present and data already in DB.")
+            return extract_to_dir, False
+        logger.info(f".unl files present for {zip_url} but not yet processed; will load them.")
+        return extract_to_dir, True
 
     logger.info(f"Downloading {zip_url}...")
     try:
-        response = requests.get(zip_url)
+        response = requests.get(zip_url, timeout=300)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to download {zip_url}: {e}")
-        return None
+        return None, False
+
+    content_sha256 = hashlib.sha256(response.content).hexdigest()
+
+    # Hash-based skip: server gave us no useful headers but content is identical
+    if not force and url_state.get("content_sha256") == content_sha256 and url_state.get("processed_at"):
+        logger.info(f"Skipping {zip_url} — content hash unchanged, data already in DB.")
+        # Update headers in state since they apparently drifted
+        zip_state[zip_url] = {
+            **url_state,
+            "etag": response.headers.get("ETag"),
+            "last_modified": response.headers.get("Last-Modified"),
+            "content_sha256": content_sha256,
+        }
+        return extract_to_dir, False
 
     try:
-        # Stream to a temp file to avoid holding large ZIPs in memory
         with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
             tmp.write(response.content)
             tmp_path = tmp.name
         with zipfile.ZipFile(tmp_path) as zip_ref:
             zip_ref.extractall(extract_to_dir)
         os.unlink(tmp_path)
-        logger.info(f"Extracted {zip_url} to {extract_to_dir}")
-        return extract_to_dir
     except zipfile.BadZipFile:
         logger.error(f"Downloaded file is not a valid ZIP file: {zip_url}")
-        return None
+        return None, False
     except Exception as e:
         logger.error(f"Error extracting ZIP file {zip_url}: {e}")
-        return None
+        return None, False
+
+    # Store ETag/hash; processed_at is set by caller after DB load
+    zip_state[zip_url] = {
+        "etag": response.headers.get("ETag"),
+        "last_modified": response.headers.get("Last-Modified"),
+        "content_sha256": content_sha256,
+        "processed_at": None,
+    }
+    logger.info(f"Extracted {zip_url} to {extract_to_dir}")
+    return extract_to_dir, True
 
 
 def parse_unl_file(file_path: str, schema_def: list) -> pd.DataFrame:
@@ -563,6 +621,102 @@ def compute_mp_stats(conn) -> None:
     logger.info(f"mp_stats: {rows} rows computed.")
 
 
+def ensure_etl_tables(conn) -> None:
+    """Create the ETL metadata tables if they don't exist yet."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS etl_schema_cache (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS etl_zip_state (
+            zip_url        TEXT PRIMARY KEY,
+            etag           TEXT,
+            last_modified  TEXT,
+            content_sha256 TEXT,
+            processed_at   TEXT
+        );
+    """)
+    conn.commit()
+
+
+def load_schema_cache(conn) -> dict | None:
+    """Load the cached schema dict from the DB, or None if absent/corrupt."""
+    try:
+        row = conn.execute(
+            "SELECT value FROM etl_schema_cache WHERE key = 'schema';"
+        ).fetchone()
+        if not row:
+            return None
+        schema = json.loads(row[0])
+        if not isinstance(schema, dict) or not schema:
+            raise ValueError("empty or invalid")
+        return schema
+    except Exception as e:
+        logger.warning(f"Schema cache unreadable ({e}), will re-fetch.")
+        return None
+
+
+def save_schema_cache(schema: dict, conn) -> None:
+    """Upsert the schema dict into the DB for reuse across runs."""
+    try:
+        conn.execute(
+            "INSERT INTO etl_schema_cache (key, value, updated_at) VALUES ('schema', ?, ?)"
+            " ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;",
+            (json.dumps(schema, ensure_ascii=False), datetime.datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        logger.info("Schema cache saved to DB (etl_schema_cache).")
+    except Exception as e:
+        logger.warning(f"Could not save schema cache: {e}")
+
+
+def load_zip_state(conn) -> dict:
+    """Load the ZIP state dict (etag/hash/processed_at per URL) from the DB."""
+    try:
+        rows = conn.execute(
+            "SELECT zip_url, etag, last_modified, content_sha256, processed_at FROM etl_zip_state;"
+        ).fetchall()
+        return {
+            row[0]: {
+                "etag":           row[1],
+                "last_modified":  row[2],
+                "content_sha256": row[3],
+                "processed_at":   row[4],
+            }
+            for row in rows
+        }
+    except Exception as e:
+        logger.warning(f"ZIP state unreadable ({e}), treating all ZIPs as new.")
+        return {}
+
+
+def save_zip_state_entry(zip_url: str, entry: dict, conn) -> None:
+    """Upsert a single ZIP state entry into the DB."""
+    try:
+        conn.execute(
+            "INSERT INTO etl_zip_state (zip_url, etag, last_modified, content_sha256, processed_at)"
+            " VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT (zip_url) DO UPDATE SET"
+            "   etag           = excluded.etag,"
+            "   last_modified  = excluded.last_modified,"
+            "   content_sha256 = excluded.content_sha256,"
+            "   processed_at   = excluded.processed_at;",
+            (
+                zip_url,
+                entry.get("etag"),
+                entry.get("last_modified"),
+                entry.get("content_sha256"),
+                entry.get("processed_at"),
+            ),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Could not save ZIP state for {zip_url}: {e}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="PSP Parliament ETL — load Czech parliament data.")
     parser.add_argument("--temp-dir", default=TEMP_DIR,
@@ -582,6 +736,10 @@ def parse_args() -> argparse.Namespace:
                         help="Delete extracted .unl files after loading each ZIP.")
     parser.add_argument("--skip-stats", action="store_true",
                         help="Skip the mp_stats computation step after loading.")
+    parser.add_argument("--refresh-schema", action="store_true",
+                        help="Re-download and re-parse schema HTML pages, replacing the local cache.")
+    parser.add_argument("--force-download", action="store_true",
+                        help="Re-download all ZIPs, ignoring cached hashes/ETags.")
     parser.add_argument("--log-level", default="INFO",
                         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                         help="Logging verbosity (default: INFO).")
@@ -627,19 +785,32 @@ def main() -> None:
         logger.info(f"Filtered to term(s) {sorted(requested)}: {len(all_zip_schema_pairs)} ZIP(s) "
                      f"(including shared reference data).")
 
-    dynamic_schema = get_all_schemas(all_zip_schema_pairs, temp_dir)
-    if not dynamic_schema:
-        logger.critical("No schema definitions found. Aborting.")
-        return
-
-    generate_sql_schema_file(dynamic_schema, PRIMARY_KEYS, args.schema_file)
-
     total_zips = len(all_zip_schema_pairs)
     conn = None
     try:
         conn = connect_db(args.db_url, temp_dir)
+        ensure_etl_tables(conn)
+
+        dynamic_schema = None
+        if not args.refresh_schema:
+            dynamic_schema = load_schema_cache(conn)
+            if dynamic_schema:
+                logger.info("Using cached schema from DB. Pass --refresh-schema to re-fetch.")
+
+        if dynamic_schema is None:
+            dynamic_schema = get_all_schemas(all_zip_schema_pairs, temp_dir)
+            if dynamic_schema:
+                save_schema_cache(dynamic_schema, conn)
+
+        if not dynamic_schema:
+            logger.critical("No schema definitions found. Aborting.")
+            return
+
+        generate_sql_schema_file(dynamic_schema, PRIMARY_KEYS, args.schema_file)
 
         create_all_tables(dynamic_schema, PRIMARY_KEYS, conn)
+
+        zip_state = load_zip_state(conn)
 
         for zip_idx, entry in enumerate(all_zip_schema_pairs, 1):
             zip_url = entry["zip_url"]
@@ -649,20 +820,35 @@ def main() -> None:
 
             logger.info(f"[{zip_idx}/{total_zips}] Processing {zip_name}...")
 
-            if not download_and_extract_zip(zip_url, current_extract_dir):
+            result_dir, data_was_new = download_and_extract_zip(
+                zip_url, current_extract_dir, zip_state, force=args.force_download
+            )
+            if result_dir is None:
                 logger.warning(f"[{zip_idx}/{total_zips}] Skipping {zip_url} due to download/extraction error.")
                 continue
 
-            for unl_file in (f for f in os.listdir(current_extract_dir) if f.endswith('.unl')):
-                file_base = os.path.splitext(unl_file)[0].lower()
-                target_table = _resolve_table(file_base)
-                # Schema lookup: use the resolved target (which is the base table name)
-                schema_key = target_table
-                if schema_key not in dynamic_schema:
-                    logger.warning(f"No schema for '{unl_file}' (resolved to '{target_table}'). Skipping.")
-                    continue
-                df = parse_unl_file(os.path.join(current_extract_dir, unl_file), dynamic_schema[schema_key])
-                load_to_db(df, target_table, PRIMARY_KEYS, conn)
+            if data_was_new:
+                for unl_file in (f for f in os.listdir(current_extract_dir) if f.endswith('.unl')):
+                    file_base = os.path.splitext(unl_file)[0].lower()
+                    target_table = _resolve_table(file_base)
+                    # Schema lookup: use the resolved target (which is the base table name)
+                    schema_key = target_table
+                    if schema_key not in dynamic_schema:
+                        logger.warning(f"No schema for '{unl_file}' (resolved to '{target_table}'). Skipping.")
+                        continue
+                    df = parse_unl_file(os.path.join(current_extract_dir, unl_file), dynamic_schema[schema_key])
+                    load_to_db(df, target_table, PRIMARY_KEYS, conn)
+
+                # Mark as processed BEFORE cleanup so --cleanup + next run still skips
+                zip_state[zip_url] = {
+                    **zip_state.get(zip_url, {}),
+                    "processed_at": datetime.datetime.now().isoformat(timespec="seconds"),
+                }
+
+            # Always persist the entry if it exists (covers new downloads, header drift,
+            # and processed_at being set above — all in one upsert)
+            if zip_url in zip_state:
+                save_zip_state_entry(zip_url, zip_state[zip_url], conn)
 
             if args.cleanup:
                 shutil.rmtree(current_extract_dir, ignore_errors=True)
