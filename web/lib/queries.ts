@@ -49,7 +49,7 @@ export async function getMpList(): Promise<MpWithStats[]> {
     JOIN poslanec p  ON p.id_poslanec = s.id_poslanec
     JOIN osoby   o  ON o.id_osoba     = p.id_osoba
     JOIN organy  org ON org.id_organ  = p.id_obdobi
-    LEFT JOIN (
+    JOIN (
       SELECT z.id_osoba, o.nazev_organu_cz, o.zkratka
       FROM zarazeni z
       JOIN organy o ON o.id_organ = z.id_of
@@ -188,7 +188,7 @@ export async function getDashboardOutliers() {
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
         JOIN organy org ON org.id_organ = p.id_obdobi
-        LEFT JOIN (
+        JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
           JOIN organy o ON o.id_organ = z.id_of
@@ -207,7 +207,7 @@ export async function getDashboardOutliers() {
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
         JOIN organy org ON org.id_organ = p.id_obdobi
-        LEFT JOIN (
+        JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
           JOIN organy o ON o.id_organ = z.id_of
@@ -226,7 +226,7 @@ export async function getDashboardOutliers() {
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
         JOIN organy org ON org.id_organ = p.id_obdobi
-        LEFT JOIN (
+        JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
           JOIN organy o ON o.id_organ = z.id_of
@@ -244,7 +244,7 @@ export async function getDashboardOutliers() {
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
         JOIN organy org ON org.id_organ = p.id_obdobi
-        LEFT JOIN (
+        JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
           JOIN organy o ON o.id_organ = z.id_of
@@ -262,7 +262,7 @@ export async function getDashboardOutliers() {
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
         JOIN organy org ON org.id_organ = p.id_obdobi
-        LEFT JOIN (
+        JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
           JOIN organy o ON o.id_organ = z.id_of
