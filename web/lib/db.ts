@@ -32,5 +32,7 @@ export async function query<T = Row>(
 ): Promise<T[]> {
   const db = getDb();
   const result = await db.execute({ sql, args });
-  return result.rows as unknown as T[];
+  return result.rows.map((row) =>
+    Object.fromEntries(result.columns.map((col, i) => [col, row[i]]))
+  ) as unknown as T[];
 }
