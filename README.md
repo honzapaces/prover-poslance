@@ -81,6 +81,46 @@ uv run python etl_script.py --term 9 --cleanup
 | `DATABASE_URL` | SQLite file path. Fallback if `TURSO_DATABASE_URL` is not set. |
 | `ETL_TEMP_DIR` | Override the default temp directory (`~/.prover-poslance/tmp`). |
 
+## CI / GitHub Actions
+
+The workflow at `.github/workflows/etl.yml` runs the ETL automatically.
+
+### Triggers
+
+| Trigger | Behavior |
+|---------|----------|
+| **Schedule** — every Sunday 02:00 UTC | Runs current term only (`--term 10`) |
+| **Manual** (`workflow_dispatch`) | Runs current term by default; set `full_sync: true` for all terms |
+
+### Setup (one-time)
+
+Add the two Turso credentials as repository secrets:
+
+```bash
+gh secret set TURSO_DATABASE_URL --body "libsql://your-db.turso.io"
+gh secret set TURSO_AUTH_TOKEN   # paste token interactively
+```
+
+### Running manually
+
+```bash
+# Current term only
+gh workflow run etl.yml
+
+# Full historical sync (all terms)
+gh workflow run etl.yml -f full_sync=true
+
+# Watch live logs
+gh run watch
+
+# List recent runs
+gh run list --workflow=etl.yml
+```
+
+### Caching
+
+The `~/.prover-poslance/tmp` directory is cached between runs. Combined with the ETag/hash skip logic in `etl_script.py`, this means unchanged ZIPs are never re-downloaded.
+
 ## How it works
 
 ```

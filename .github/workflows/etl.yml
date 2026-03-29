@@ -1,0 +1,48 @@
+name: ETL — Czech Parliament Data
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # Every Sunday at 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      full_sync:
+        description: "Full sync (all terms)"
+        type: boolean
+        default: false
+
+jobs:
+  etl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Cache ETL temp dir
+        uses: actions/cache@v4
+        with:
+          path: ~/.prover-poslance/tmp
+          key: etl-cache-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            etl-cache-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run ETL (current term)
+        if: ${{ github.event_name == 'schedule' || inputs.full_sync == false }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: uv run python etl_script.py --term 10 --cleanup
+
+      - name: Run ETL (full sync)
+        if: ${{ inputs.full_sync == true }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: uv run python etl_script.py --cleanup
