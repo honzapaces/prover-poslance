@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import { cookies } from "next/headers";
 import { hasLocale, getDictionary } from "@/lib/i18n";
 import { getMpList } from "@/lib/queries";
 import { MpListClient } from "./MpListClient";
@@ -9,7 +10,9 @@ export default async function PoslanciPage({ params }: PageProps<"/[locale]/posl
   const { locale } = await params;
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
-  const mps = await getMpList();
+  const cookieStore = await cookies();
+  const termId = cookieStore.get("term_id")?.value ? Number(cookieStore.get("term_id")!.value) : null;
+  const mps = await getMpList(termId);
 
   return (
     <div>

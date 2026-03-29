@@ -1,7 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { hasLocale, getDictionary, LOCALES } from "@/lib/i18n";
-import { getLastUpdated } from "@/lib/queries";
+import { getLastUpdated, getAvailableTerms } from "@/lib/queries";
+import { TermSelector } from "@/components/TermSelector";
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -14,7 +16,13 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
-  const lastUpdated = await getLastUpdated();
+  const cookieStore = await cookies();
+  const termIdCookie = cookieStore.get("term_id")?.value;
+  const [lastUpdated, terms] = await Promise.all([getLastUpdated(), getAvailableTerms()]);
+  const currentTermId =
+    termIdCookie && terms.some((t) => t.id_organ === Number(termIdCookie))
+      ? Number(termIdCookie)
+      : (terms[0]?.id_organ ?? 0);
 
   return (
     <html lang={locale}>
@@ -83,8 +91,11 @@ export default async function LocaleLayout({
               {t.nav.comparison}
             </Link>
 
-            {/* Language switcher */}
-            <div className="ml-auto flex items-center gap-2">
+            {/* Term selector + Language switcher */}
+            <div className="ml-auto flex items-center gap-3">
+              {terms.length > 1 && (
+                <TermSelector terms={terms} currentTermId={currentTermId} />
+              )}
               {LOCALES.map((l) => (
                 <Link
                   key={l}

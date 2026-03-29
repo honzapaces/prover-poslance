@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { cookies } from "next/headers";
 import { hasLocale, getDictionary } from "@/lib/i18n";
 import { getDashboardOutliers } from "@/lib/queries";
 
@@ -182,7 +183,9 @@ export default async function DashboardPage({
   const { locale } = await params;
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
-  const data = await getDashboardOutliers();
+  const cookieStore = await cookies();
+  const termId = cookieStore.get("term_id")?.value ? Number(cookieStore.get("term_id")!.value) : null;
+  const data = await getDashboardOutliers(termId);
 
   return (
     <div>

@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { hasLocale, getDictionary } from "@/lib/i18n";
 import { getPartyList } from "@/lib/queries";
 
@@ -9,7 +10,9 @@ export default async function StranyPage({ params }: PageProps<"/[locale]/strany
   const { locale } = await params;
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
-  const parties = await getPartyList();
+  const cookieStore = await cookies();
+  const termId = cookieStore.get("term_id")?.value ? Number(cookieStore.get("term_id")!.value) : null;
+  const parties = await getPartyList(termId);
 
   return (
     <div>
