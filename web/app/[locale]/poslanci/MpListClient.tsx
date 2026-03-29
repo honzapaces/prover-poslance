@@ -13,6 +13,18 @@ interface Props {
   t: ReturnType<typeof getDictionary>;
 }
 
+const controlStyle: React.CSSProperties = {
+  border: "1px solid var(--cr-border)",
+  borderRadius: "4px",
+  padding: "0.5rem 0.75rem",
+  fontSize: "0.875rem",
+  color: "var(--cr-text)",
+  background: "var(--cr-white)",
+  outline: "none",
+  fontFamily: "'Barlow', sans-serif",
+  fontWeight: 400,
+};
+
 export function MpListClient({ mps, locale, t }: Props) {
   const [search, setSearch] = useState("");
   const [party, setParty] = useState("all");
@@ -47,19 +59,26 @@ export function MpListClient({ mps, locale, t }: Props) {
 
   return (
     <div>
-      {/* Controls */}
-      <div className="flex flex-wrap gap-3 mb-6">
+      {/* Controls bar */}
+      <div
+        className="cr-card flex flex-wrap items-center gap-3 p-4 mb-6"
+        style={{ background: "var(--cr-white)" }}
+      >
         <input
           type="search"
           placeholder={t.mps.search}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={{ ...controlStyle, width: "13rem" }}
+          onFocus={(e) => (e.target.style.borderColor = "var(--cr-blue)")}
+          onBlur={(e) => (e.target.style.borderColor = "var(--cr-border)")}
         />
         <select
           value={party}
           onChange={(e) => setParty(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={controlStyle}
+          onFocus={(e) => (e.target.style.borderColor = "var(--cr-blue)")}
+          onBlur={(e) => (e.target.style.borderColor = "var(--cr-border)")}
         >
           <option value="all">{t.mps.allParties}</option>
           {parties.map((p) => (
@@ -71,7 +90,9 @@ export function MpListClient({ mps, locale, t }: Props) {
         <select
           value={sortKey}
           onChange={(e) => setSortKey(e.target.value as SortKey)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          style={controlStyle}
+          onFocus={(e) => (e.target.style.borderColor = "var(--cr-blue)")}
+          onBlur={(e) => (e.target.style.borderColor = "var(--cr-border)")}
         >
           {sortOptions.map((o) => (
             <option key={o.key} value={o.key}>
@@ -79,8 +100,20 @@ export function MpListClient({ mps, locale, t }: Props) {
             </option>
           ))}
         </select>
-        <span className="text-sm text-gray-500 self-center">
-          {filtered.length} / {mps.length}
+
+        <span
+          style={{
+            marginLeft: "auto",
+            color: "var(--cr-text-muted)",
+            fontSize: "0.8rem",
+          }}
+        >
+          <strong style={{ color: "var(--cr-red)", fontWeight: 700 }}>
+            {filtered.length}
+          </strong>
+          <span style={{ color: "var(--cr-text-faint)" }}>
+            {" "}/ {mps.length}
+          </span>
         </span>
       </div>
 

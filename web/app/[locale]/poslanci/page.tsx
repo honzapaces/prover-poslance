@@ -13,8 +13,18 @@ export default async function PoslanciPage({ params }: PageProps<"/[locale]/posl
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{t.mps.title}</h1>
+      <div className="mb-8 section-accent">
+        <h1
+          style={{
+            fontFamily: "'EB Garamond', serif",
+            color: "var(--cr-text)",
+            fontWeight: 700,
+            fontSize: "2rem",
+            lineHeight: 1.2,
+          }}
+        >
+          {t.mps.title}
+        </h1>
       </div>
       <MpListClient mps={mps} locale={locale} t={t} />
     </div>

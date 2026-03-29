@@ -16,37 +16,69 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale}>
-      <body className="min-h-screen bg-gray-50">
-        <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-          <nav className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
+      <body style={{ background: "var(--cr-blue-wash)", minHeight: "100vh" }}>
+        {/* Navigation */}
+        <header
+          style={{
+            background: "var(--cr-blue)",
+            borderBottom: "3px solid var(--cr-red)",
+          }}
+          className="sticky top-0 z-10"
+        >
+          <nav className="max-w-6xl mx-auto px-6 flex items-center gap-0"
+            style={{ height: "3.75rem" }}>
+            {/* Logo with tricolor stripe */}
             <Link
               href={`/${locale}`}
-              className="font-semibold text-gray-900 text-sm"
+              className="flex items-center gap-3 mr-8 flex-shrink-0"
             >
-              {t.nav.title}
+              <div
+                className="tricolor-bar-v flex-shrink-0 rounded-sm"
+                style={{ width: "5px", height: "28px" }}
+                aria-hidden="true"
+              />
+              <span
+                style={{
+                  fontFamily: "'EB Garamond', serif",
+                  color: "white",
+                  fontWeight: 700,
+                  fontSize: "1.15rem",
+                  letterSpacing: "0.01em",
+                  lineHeight: 1,
+                }}
+              >
+                {t.nav.title}
+              </span>
             </Link>
+
+            {/* Nav links */}
             <Link
               href={`/${locale}`}
-              className="text-sm text-gray-600 hover:text-gray-900"
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
             >
               {t.nav.home}
             </Link>
             <Link
               href={`/${locale}/poslanci`}
-              className="text-sm text-gray-600 hover:text-gray-900"
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
             >
               {t.nav.mps}
             </Link>
+
+            {/* Language switcher */}
             <div className="ml-auto flex items-center gap-2">
               {LOCALES.map((l) => (
                 <Link
                   key={l}
                   href={`/${l}`}
-                  className={`text-xs px-2 py-1 rounded ${
+                  style={
                     l === locale
-                      ? "bg-gray-900 text-white"
-                      : "text-gray-500 hover:text-gray-900"
-                  }`}
+                      ? { background: "var(--cr-red)", color: "white" }
+                      : { color: "rgba(255,255,255,0.5)" }
+                  }
+                  className="text-xs px-3 py-1.5 rounded font-semibold uppercase tracking-widest transition-colors hover:text-white"
                 >
                   {l.toUpperCase()}
                 </Link>
@@ -54,7 +86,33 @@ export default async function LocaleLayout({
             </div>
           </nav>
         </header>
-        <main className="max-w-6xl mx-auto px-4 py-8">{children}</main>
+
+        {/* Page content */}
+        <main className="max-w-6xl mx-auto px-6 py-10">{children}</main>
+
+        {/* Footer */}
+        <footer
+          style={{ borderTop: "1px solid var(--cr-border)" }}
+          className="mt-16 py-6"
+        >
+          <div
+            className="max-w-6xl mx-auto px-6 flex items-center justify-between"
+          >
+            <span
+              style={{ color: "var(--cr-text-faint)", fontSize: "0.8rem" }}
+              className="font-medium tracking-wide uppercase"
+            >
+              {t.nav.title}
+            </span>
+            <div className="flex items-center gap-3">
+              <div
+                className="tricolor-bar rounded-sm"
+                style={{ width: "36px", height: "4px" }}
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );

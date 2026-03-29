@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "www.psp.cz",
-        pathname: "/eknih/cdrom/web/poslanci/**",
+        pathname: "/eknih/cdrom/**",
       },
     ],
   },
