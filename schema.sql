@@ -61,8 +61,8 @@ CREATE TABLE IF NOT EXISTS vysledek (id_vysledek INTEGER, druh_vysledek TEXT, PR
 CREATE TABLE IF NOT EXISTS tisky_za (id_tisk INTEGER, cislo_za INTEGER, id_hist INTEGER, id_druh INTEGER, nazev_za TEXT, uplny_nazev_za TEXT, rozeslano TEXT, id_org INTEGER, usn_vybor INTEGER, id_posl INTEGER, t_url TEXT, id_vysledek INTEGER, cislo_za_post INTEGER, sort_it INTEGER, roz TEXT, status INTEGER, PRIMARY KEY (id_tisk, cislo_za));
 CREATE TABLE IF NOT EXISTS predkladatel (id_tisk INTEGER, id_osoba INTEGER, poradi INTEGER, typ INTEGER, PRIMARY KEY (id_tisk, id_osoba));
 CREATE TABLE IF NOT EXISTS navrh_podpis (id_tisk INTEGER, id_osoba INTEGER, stav INTEGER, datum TEXT, PRIMARY KEY (id_tisk, id_osoba));
-CREATE TABLE IF NOT EXISTS tisk_eklep (PID TEXT, ova_c INTEGER, ova_r INTEGER, verejne INTEGER, id_tisk INTEGER, cislo_za INTEGER, PRIMARY KEY (id_tisk_eklep));
-CREATE TABLE IF NOT EXISTS tz_eklep (PID TEXT, ova_c INTEGER, ova_r INTEGER, verejne INTEGER, id_tisk INTEGER, cislo_za INTEGER, PRIMARY KEY (id_tz_eklep));
+CREATE TABLE IF NOT EXISTS tisk_eklep (PID TEXT, ova_c INTEGER, ova_r INTEGER, verejne INTEGER, id_tisk INTEGER, cislo_za INTEGER, PRIMARY KEY (id_tisk, cislo_za));
+CREATE TABLE IF NOT EXISTS tz_eklep (PID TEXT, ova_c INTEGER, ova_r INTEGER, verejne INTEGER, id_tisk INTEGER, cislo_za INTEGER, PRIMARY KEY (id_tisk, cislo_za));
 CREATE TABLE IF NOT EXISTS uitypv (id_ui_stav INTEGER, nazev TEXT, priorita INTEGER, PRIMARY KEY (id_ui_stav));
 CREATE TABLE IF NOT EXISTS los_interpelaci (id_los INTEGER, datum_los TEXT, typ_los TEXT, cas_los TEXT, id_schuze INTEGER, id_bod INTEGER, schuze INTEGER, id_org INTEGER, PRIMARY KEY (id_los));
 CREATE TABLE IF NOT EXISTS poradi (id_poradi INTEGER, id_losovani INTEGER, id_poslanec INTEGER, id_ministr INTEGER, vec TEXT, poradi_l INTEGER, priorita INTEGER, vec32 TEXT, PRIMARY KEY (id_poradi));

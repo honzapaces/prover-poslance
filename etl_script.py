@@ -91,11 +91,11 @@ PRIMARY_KEYS = {
     "typ_akce":       ["id_akce"],
     "prechody":       ["id_prechod"],
     "tisky":          ["id_tisk"],
-    "tz_eklep":       ["id_tz_eklep"],
+    "tz_eklep":       ["id_tisk", "cislo_za"],
     "hist":           ["id_hist"],
     "tisky_za":       ["id_tisk", "cislo_za"],
     "vysledek":       ["id_vysledek"],
-    "tisk_eklep":     ["id_tisk_eklep"],
+    "tisk_eklep":     ["id_tisk", "cislo_za"],
     "hist_vybory":    ["id_hist"],
     "predkladatel":   ["id_tisk", "id_osoba"],
     "navrh_podpis":   ["id_tisk", "id_osoba"],
@@ -390,12 +390,16 @@ def load_to_db(
     conn,
     chunk_size: int = 10000,
 ) -> None:
-    logger.info(f"Loading data to table: {table_name}")
+    import time
+    total_rows = len(df)
+    logger.info(f"Loading data to table: {table_name} ({total_rows} rows)")
     if df.empty:
         logger.warning(f"DataFrame for {table_name} is empty. Skipping load.")
         return
 
+    t_normalize = time.monotonic()
     df = _normalize_df_for_db(df)
+    logger.debug(f"  {table_name}: normalize took {time.monotonic() - t_normalize:.2f}s")
 
     columns = ", ".join(df.columns)
     placeholders = ", ".join(["?" for _ in df.columns])
@@ -418,14 +422,26 @@ def load_to_db(
         insert_sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
         logger.warning(f"No primary key for '{table_name}'. INSERT may produce duplicates.")
 
+    total_chunks = (total_rows + chunk_size - 1) // chunk_size
+    t_start = time.monotonic()
     try:
         cursor = conn.cursor()
-        for i in range(0, len(df), chunk_size):
+        for i in range(0, total_rows, chunk_size):
             chunk = df.iloc[i:i + chunk_size]
+            chunk_num = i // chunk_size + 1
+            t_chunk = time.monotonic()
             cursor.executemany(insert_sql, [tuple(row) for row in chunk.values])
-            conn.commit()
-            logger.info(f"  {table_name}: loaded chunk {i // chunk_size + 1} ({len(chunk)} rows)")
-        logger.info(f"  {table_name}: {len(df)} total rows loaded.")
+            elapsed = time.monotonic() - t_chunk
+            rows_done = min(i + chunk_size, total_rows)
+            pct = rows_done / total_rows * 100
+            logger.info(
+                f"  {table_name}: chunk {chunk_num}/{total_chunks} "
+                f"({rows_done}/{total_rows} rows, {pct:.0f}%) "
+                f"chunk={elapsed:.2f}s total={time.monotonic() - t_start:.1f}s"
+            )
+        # Commit once per table — avoids per-chunk network round-trips to Turso
+        conn.commit()
+        logger.info(f"  {table_name}: done — {total_rows} rows in {time.monotonic() - t_start:.1f}s")
     except Exception as e:
         logger.error(f"Error loading data to table {table_name}: {e}")
 
@@ -858,9 +874,11 @@ def main() -> None:
             compute_mp_stats(conn)
 
         if args.db_url.startswith("libsql://"):
-            logger.info("Syncing local replica to Turso...")
+            import time as _time
+            logger.info("Syncing local replica to Turso (this uploads all data — may take minutes)...")
+            t_sync = _time.monotonic()
             conn.sync()
-            logger.info("Sync complete.")
+            logger.info(f"Sync complete in {_time.monotonic() - t_sync:.1f}s")
 
     except Exception as e:
         logger.critical(f"Database error: {e}. Aborting.")
