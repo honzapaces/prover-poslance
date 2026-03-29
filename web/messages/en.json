@@ -34,7 +34,8 @@
   },
   "footer": {
     "dataSource": "Data: Chamber of Deputies of the Czech Republic",
-    "sourceCode": "Source code"
+    "sourceCode": "Source code",
+    "lastUpdated": "Last updated"
   },
   "stats": {
     "topParticipation": "Highest participation",

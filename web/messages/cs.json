@@ -34,7 +34,8 @@
   },
   "footer": {
     "dataSource": "Data: Poslanecká sněmovna ČR",
-    "sourceCode": "Zdrojový kód"
+    "sourceCode": "Zdrojový kód",
+    "lastUpdated": "Aktualizováno"
   },
   "stats": {
     "topParticipation": "Nejvyšší účast",

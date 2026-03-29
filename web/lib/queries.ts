@@ -94,6 +94,14 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
   return rows[0] ?? null;
 }
 
+/** Last ETL run timestamp (ISO string or null) */
+export async function getLastUpdated(): Promise<string | null> {
+  const rows = await query<{ last_updated: string | null }>(
+    `SELECT MAX(updated_at) AS last_updated FROM mp_stats`
+  );
+  return rows[0]?.last_updated ?? null;
+}
+
 /** Dashboard: top/bottom 5 per metric */
 export async function getDashboardOutliers() {
   const [topParticipation, bottomParticipation, topBills, topSpeeches, topInterpellations] =

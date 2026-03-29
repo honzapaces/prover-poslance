@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { hasLocale, getDictionary, LOCALES } from "@/lib/i18n";
+import { getLastUpdated } from "@/lib/queries";
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -13,6 +14,7 @@ export default async function LocaleLayout({
   const { locale } = await params;
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
+  const lastUpdated = await getLastUpdated();
 
   return (
     <html lang={locale}>
@@ -112,6 +114,16 @@ export default async function LocaleLayout({
               >
                 {t.footer.dataSource} ↗
               </a>
+              {lastUpdated && (
+                <span style={{ color: "var(--cr-text-faint)", fontSize: "0.75rem" }}>
+                  {t.footer.lastUpdated}{" "}
+                  {new Date(lastUpdated).toLocaleDateString(locale === "cs" ? "cs-CZ" : "en-GB", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-4">
               <a
