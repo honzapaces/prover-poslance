@@ -1,0 +1,42 @@
+{
+  "nav": {
+    "home": "Overview",
+    "mps": "MPs",
+    "title": "Check your MP"
+  },
+  "home": {
+    "title": "MP Overview",
+    "subtitle": "How your representatives work in the 9th parliamentary term"
+  },
+  "mps": {
+    "title": "Members of Parliament",
+    "search": "Search MPs...",
+    "filterParty": "Filter by party",
+    "allParties": "All parties",
+    "sortBy": "Sort by",
+    "participation": "Voting participation",
+    "bills": "Bills",
+    "speeches": "Speeches",
+    "interpellations": "Interpellations"
+  },
+  "mp": {
+    "participation": "Voting participation",
+    "billsAuthored": "Bills authored",
+    "billsCosigned": "Bills co-signed",
+    "speeches": "Speeches",
+    "interpellations": "Interpellations",
+    "votesTotal": "Total votes",
+    "votesPresent": "Present",
+    "votesAbsent": "Absent",
+    "votesExcused": "Excused",
+    "profile": "Profile",
+    "viewProfile": "View profile"
+  },
+  "stats": {
+    "topParticipation": "Highest participation",
+    "bottomParticipation": "Lowest participation",
+    "topBills": "Most bills",
+    "topSpeeches": "Most speeches",
+    "topInterpellations": "Most interpellations"
+  }
+}

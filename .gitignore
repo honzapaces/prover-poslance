@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+web/.env.local
+
+# Next.js
+web/.next/
+web/node_modules/

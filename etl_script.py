@@ -1,86 +1,183 @@
+import argparse
+import datetime
+import math
+import os
+import re
+import shutil
+import sqlite3
+import tempfile
+import urllib.parse
+import zipfile
+import logging
+
+from dotenv import load_dotenv
+import numpy as np
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-import zipfile
-import os
-import sqlite3
-from io import BytesIO
-import urllib.parse
-import logging
-import numpy as np # Import numpy
+
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Define the base URL for the data
 BASE_URL = "https://www.psp.cz"
 DATA_PAGE_URL = f"{BASE_URL}/sqw/hp.sqw?k=1300"
-# TEMP_DIR for downloads and extracted files
-TEMP_DIR = "/Users/jan.paces/.gemini/tmp/5e0ab42036398c20af3f5e62aad2dab5fb6a264ff1458dea64d3601da2d35661"
+
+TEMP_DIR = os.path.expanduser(os.environ.get("ETL_TEMP_DIR", "~/.prover-poslance/tmp"))
 EXTRACT_DIR = os.path.join(TEMP_DIR, "extracted_data")
-DB_NAME = os.path.join(TEMP_DIR, "parliament_data.db")
+DB_NAME = (
+    os.environ.get("TURSO_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or os.path.join(TEMP_DIR, "parliament_data.db")
+)
 SCHEMA_SQL_FILE = "schema.sql"
 
-# Inferred Primary Keys for each table
-PRIMARY_KEYS = {
-    "osoby": ["id_osoba"],
-    "funkce": ["id_funkce"],
-    "organy": ["id_organ"],
-    "typ_funkce": ["id_typ_funkce"],
-    "typ_organu": ["id_typ_org"],
-    "zarazeni": ["id_osoba", "id_of", "od_o"], # Composite key
-    "poslanec": ["id_poslanec"],
-    "pkgps": ["id_poslanec"],
-    "osoba_extra": ["id_osoba", "id_org", "typ"], # Composite key, or id_external could be PK
-    # Voting-related tables
-    "hl_hlasovani": ["id_hlasovani"], # Generic for hlYYYY files
-    "zmatecne": ["id_hlasovani"],
-    "omluvy": [], # Removed id_hlasovani as it's not present in the table schema
-    "hl_poslanec": ["id_poslanec", "id_hlasovani"], # Assuming composite
-    "hl_check": ["id_hlasovani"],
-    "hl_zposlanec": ["id_poslanec", "id_hlasovani"],
-    "hl_vazby": ["id_hlasovani", "id_organ"], # Assuming composite
-    # tisky (parliamentary prints)
-    "druh_tisku": ["id_druh_tisku"],
-    "typ_zakon": ["id_typ_zakon"],
-    "typ_stavu": ["id_typ_stavu"],
-    "stavy": ["id_stav"],
-    "typ_akce": ["id_typ_akce"],
-    "prechody": ["id_prechod"],
-    "tisky": ["id_tisk"],
-    "tz_eklep": ["id_tz_eklep"],
-    "hist": ["id_hist"],
-    "tisky_za": ["id_tisk", "id_osoba"], # Composite
-    "vysledek": ["id_vysledek"],
-    "tisk_eklep": ["id_tisk_eklep"],
-    "hist_vybory": ["id_hist_vybory"],
-    "predkladatel": ["id_predkladatel"],
-    "navrh_podpis": ["id_navrh_podpis"],
-    "schuze": ["id_schuze"],
-    "bod_schuze": ["id_schuze", "id_bod"], # Composite
-    "bod_stav": ["id_bod", "id_stav"], # Composite
-    "schuze_stav": ["id_schuze", "id_stav"], # Composite
-    "uitypv": ["id_interpelace", "id_poslanec"], # Assuming composite
-    "los_interpelaci": ["id_interpelace"],
-    "poradi": ["id_poradi"],
-    "ui_stav": ["id_ui_stav"],
-    "sd_dokument": ["id_dokument"],
-    "druh_predpisu": ["id_druh_predpisu"],
-    "sbirka": ["id_sbirka"],
-    "sb_pre": ["id_sbirka", "id_predpis"], # Composite
-    "steno": ["id_steno"],
-    "steno_bod": ["id_steno_bod"],
-    "rec": ["id_rec"],
-    "se_tisk": ["id_se_tisk"],
-    "psp2senat": ["id_psp", "id_senat"], # Composite
-    "se_druh_tisku": ["id_se_druh_tisku"],
+# Year-specific voting files use different schemas depending on the suffix:
+#   s  → hl_hlasovani  (one row per vote session, 17 cols)
+#   h1/h2/h3 → hl_poslanec (one row per MP per vote, 3 cols)
+#   v  → hl_vazby      (vote–organ relationships, 3 cols)
+#   x  → hl_zposlanec  (substitute votes, 3 cols)
+#   z  → hl_check      (vote validation, 5 cols)
+_HL_YEARS = range(1993, datetime.date.today().year + 1)
+# hl_hlasovani session tables are kept year-specific (one per year) for efficient
+# per-year queries. All other year-variant types (h1/h2/h3, v, x, z) are
+# consolidated into their base table via _HL_FILE_REDIRECT below.
+SCHEMA_ALIASES: dict[str, list[str]] = {
+    "hl_hlasovani": [f"hl{y}s" for y in _HL_YEARS],
 }
 
-def extract_schema_from_html(html_file_path):
-    """
-    Extracts schema definitions for UNL files from the HTML documentation page.
-    """
+# Year-specific file variants (e.g. hl2021h1) should be consolidated into
+# their base table instead of creating one table per year × suffix.
+_HL_FILE_REDIRECT: list[tuple[re.Pattern, str]] = [
+    (re.compile(r'^hl\d{4}h\d$'), 'hl_poslanec'),
+    (re.compile(r'^hl\d{4}v$'),   'hl_vazby'),
+    (re.compile(r'^hl\d{4}x$'),   'hl_zposlanec'),
+    (re.compile(r'^hl\d{4}z$'),   'hl_check'),
+]
+
+
+def _resolve_table(name: str) -> str:
+    """Map a filename-derived table name to its consolidation target, if any."""
+    for pattern, target in _HL_FILE_REDIRECT:
+        if pattern.match(name):
+            return target
+    return name
+
+PRIMARY_KEYS = {
+    "osoby":          ["id_osoba"],
+    "funkce":         ["id_funkce"],
+    "organy":         ["id_organ"],
+    "typ_funkce":     ["id_typ_funkce"],
+    "typ_organu":     ["id_typ_org"],
+    "zarazeni":       ["id_osoba", "id_of", "od_o"],
+    "poslanec":       ["id_poslanec"],
+    "pkgps":          ["id_poslanec"],
+    "osoba_extra":    ["id_osoba", "id_org", "typ"],
+    "hl_hlasovani":   ["id_hlasovani"],
+    "zmatecne":       ["id_hlasovani"],
+    "omluvy":         ["id_organ", "id_poslanec", "den"],  # od (time) can be NULL — excluded from PK
+    "hl_poslanec":    ["id_poslanec", "id_hlasovani"],
+    "hl_check":       ["id_hlasovani", "turn"],   # cols: id_hlasovani, turn, mode, id_h2, id_h3
+    "hl_zposlanec":   ["id_hlasovani", "id_osoba"], # cols: id_hlasovani, id_osoba, mode
+    "hl_vazby":       ["id_hlasovani", "turn"],     # cols: id_hlasovani, turn, typ
+    "druh_tisku":     ["id_druh"],
+    "typ_zakon":      ["id_navrh"],
+    "typ_stavu":      ["id_typ"],
+    "stavy":          ["id_stav"],
+    "typ_akce":       ["id_akce"],
+    "prechody":       ["id_prechod"],
+    "tisky":          ["id_tisk"],
+    "tz_eklep":       ["id_tz_eklep"],
+    "hist":           ["id_hist"],
+    "tisky_za":       ["id_tisk", "cislo_za"],
+    "vysledek":       ["id_vysledek"],
+    "tisk_eklep":     ["id_tisk_eklep"],
+    "hist_vybory":    ["id_hist"],
+    "predkladatel":   ["id_tisk", "id_osoba"],
+    "navrh_podpis":   ["id_tisk", "id_osoba"],
+    "schuze":         ["id_schuze"],
+    "bod_schuze":     ["id_schuze", "id_bod"],
+    "bod_stav":       ["id_bod_stav"],
+    "schuze_stav":    ["id_schuze", "stav"],
+    "uitypv":         ["id_ui_stav"],
+    "los_interpelaci":["id_los"],
+    "poradi":         ["id_poradi"],
+    "ui_stav":        ["id_poradi", "id_typ"],
+    "sd_dokument":    ["id_dokument"],
+    "druh_predpisu":  ["id_dp"],
+    "sbirka":         ["id_sbirka"],
+    "sb_pre":         ["id_tisk", "id_sbirka"],
+    "steno":          ["id_steno"],
+    "steno_bod":      ["id_steno", "aname"],
+    "rec":            ["id_steno", "aname"],
+    "se_tisk":        ["id_tisk"],
+    "psp2senat":      ["id_psp", "id_senat"],
+    "se_druh_tisku":  ["id_druh"],
+}
+# Year-specific session tables (hl2021s, hl2022s, …) share the hl_hlasovani PK.
+# They are kept as separate tables for per-year queries rather than consolidated.
+for _y in _HL_YEARS:
+    PRIMARY_KEYS[f"hl{_y}s"] = ["id_hlasovani"]
+
+
+def connect_db(db_url: str, temp_dir: str):
+    """Return a DB-API connection to either Turso (libsql) or local SQLite."""
+    if db_url.startswith("libsql://"):
+        try:
+            import libsql
+        except ImportError:
+            raise ImportError("Install the Turso driver first: uv add libsql")
+        auth_token = os.environ.get("TURSO_AUTH_TOKEN")
+        if not auth_token:
+            raise ValueError("TURSO_AUTH_TOKEN env var is required for Turso connections.")
+        cache_path = os.path.join(temp_dir, "turso_cache.db")
+        logger.info(f"Connecting to Turso: {db_url}  (local cache: {cache_path})")
+        conn = libsql.connect(cache_path, sync_url=db_url, auth_token=auth_token)
+        conn.sync()
+        return conn
+    else:
+        logger.info(f"Connecting to SQLite: {db_url}")
+        return sqlite3.connect(db_url)
+
+
+def psp_type_to_sql(col_type: str) -> str:
+    """Map a PSP column type string to a SQL type."""
+    if "int" in col_type:
+        return "INTEGER"
+    if "date" in col_type:
+        return "TEXT"  # stored as ISO-formatted string
+    return "TEXT"
+
+
+def _normalize_df_for_db(df: pd.DataFrame) -> pd.DataFrame:
+    """Vectorized conversion of a DataFrame to DB-safe types (None, str, number)."""
+    df = df.copy()
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+        elif df[col].dtype == 'object':
+            # Convert any datetime.time or other non-string objects to str
+            df[col] = df[col].map(
+                lambda x: str(x) if x is not None and hasattr(x, 'strftime') else x
+            )
+        # Replace all NaN/NaT/pd.NA variants with Python None.
+        #
+        # Why .astype(object) first:
+        # Pandas nullable integer columns (Int64) use pd.NA as their missing-value
+        # sentinel. Calling .where(cond, None) on an Int64 Series does NOT produce
+        # Python None — pandas coerces the replacement back to pd.NA to preserve the
+        # dtype. The sqlite3 driver cannot bind pd.NA and raises:
+        #   "Error binding parameter N: type 'NAType' is not supported"
+        # Converting to object dtype first breaks the dtype constraint, so the
+        # subsequent .where() can store a real Python None, which sqlite3 maps to NULL.
+        df[col] = df[col].astype(object).where(df[col].notna(), None)
+    return df
+
+
+def extract_schema_from_html(html_file_path: str) -> dict:
+    """Extract schema definitions from a PSP HTML documentation page."""
     logger.info(f"Extracting schema from {html_file_path}...")
     try:
         with open(html_file_path, 'r', encoding='cp1250') as f:
@@ -93,107 +190,63 @@ def extract_schema_from_html(html_file_path):
         return {}
 
     dynamic_schema = {}
-    
+
     for h2_tag in soup.find_all('h2'):
-        if h2_tag.text.strip().startswith('Tabulka '):
-            table_name_cz = h2_tag.text.strip().replace('Tabulka ', '')
-            unl_file_key = table_name_cz.lower()
-            
-            table_tag = h2_tag.find_next_sibling('table')
-            if table_tag:
-                current_table_schema = []
-                # Get all rows in the table
-                all_trs = table_tag.find_all('tr')
-                # Assume the first row is the header if it contains 'Sloupec' in the first td
-                start_row_index = 0
-                if all_trs and all_trs[0].find('td') and 'Sloupec' in all_trs[0].find('td').text:
-                    start_row_index = 1 # Skip the first row (header)
+        if not h2_tag.text.strip().startswith('Tabulka '):
+            continue
+        unl_file_key = h2_tag.text.strip().replace('Tabulka ', '').lower()
 
-                for tr in all_trs[start_row_index:]:
-                    cols = tr.find_all('td')
-                    if len(cols) >= 2:
-                        column_name = cols[0].text.strip()
-                        column_type = cols[1].text.strip()
-                        current_table_schema.append({"name": column_name, "type": column_type})
-                if current_table_schema:
-                    dynamic_schema[unl_file_key] = current_table_schema
+        table_tag = h2_tag.find_next_sibling('table')
+        if not table_tag:
+            continue
 
-                    # Special handling for voting tables (hl_hlasovani)
-                    # Map the 'hl_hlasovani' schema to specific UNL file names.
-                    if unl_file_key == "hl_hlasovani":
-                        for year in range(1993, 2026): # Covers years from 1993 to 2025
-                            dynamic_schema[f"hl{year}s"] = current_table_schema
-                            dynamic_schema[f"hl{year}h1"] = current_table_schema
-                            dynamic_schema[f"hl{year}h2"] = current_table_schema
-                            dynamic_schema[f"hl{year}h3"] = current_table_schema # Some years might have h3
-                            dynamic_schema[f"hl{year}v"] = current_table_schema
-                            dynamic_schema[f"hl{year}x"] = current_table_schema
-                            dynamic_schema[f"hl{year}z"] = current_table_schema
-                    
-                    # Special handling for 'tisky' (parliamentary prints)
-                    if unl_file_key == "tisky":
-                        dynamic_schema["tz_eklep"] = current_table_schema
-                        dynamic_schema["typ_stavu"] = current_table_schema
-                        dynamic_schema["hist"] = current_table_schema
-                        dynamic_schema["typ_akce"] = current_table_schema
-                        dynamic_schema["tisky_za"] = current_table_schema
-                        dynamic_schema["prechody"] = current_table_schema
-                        dynamic_schema["druh_tisku"] = current_table_schema
-                        dynamic_schema["typ_zakon"] = current_table_schema
-                        dynamic_schema["vysledek"] = current_table_schema
-                        dynamic_schema["tisk_eklep"] = current_table_schema
-                        dynamic_schema["stavy"] = current_table_schema
-                        dynamic_schema["hist_vybory"] = current_table_schema
-                        dynamic_schema["predkladatel"] = current_table_schema
-                    
-                    # Special handling for 'interp' (oral interpellations)
-                    if unl_file_key == "interp":
-                        dynamic_schema["p-stav"] = current_table_schema
-                        dynamic_schema["uitypv"] = current_table_schema
-                        dynamic_schema["li"] = current_table_schema
-                        dynamic_schema["poradi"] = current_table_schema
-                    
-                    # Special handling for 'steno' (stenographic records)
-                    if unl_file_key == "steno":
-                        dynamic_schema["steno_bod"] = current_table_schema
-                        dynamic_schema["rec"] = current_table_schema
-                    
-                    # Special handling for 'sd' (parliamentary documents)
-                    if unl_file_key == "sd":
-                        dynamic_schema["sd_dokument"] = current_table_schema
-                    
-                    # Special handling for 'sbirka' (collection of laws)
-                    if unl_file_key == "sbirka":
-                        dynamic_schema["druh_predpisu"] = current_table_schema
-                        dynamic_schema["sb_pre"] = current_table_schema
-                    
-                    # Special handling for 'schuze' (sessions)
-                    if unl_file_key == "schuze":
-                        dynamic_schema["bod_schuze"] = current_table_schema
-                        dynamic_schema["bod_stav"] = current_table_schema
-                        dynamic_schema["schuze_stav"] = current_table_schema
+        all_trs = table_tag.find_all('tr')
+        first_td = all_trs[0].find('td') if all_trs else None
+        start_row_index = 1 if (first_td and 'Sloupec' in first_td.text) else 0
 
-                    # Special handling for 'se_tisk' (senate prints)
-                    if unl_file_key == "se_tisk":
-                        dynamic_schema["psp2senat"] = current_table_schema
-                        dynamic_schema["se_druh_tisku"] = current_table_schema
+        current_table_schema = [
+            {"name": cols[0].text.strip(), "type": cols[1].text.strip()}
+            for tr in all_trs[start_row_index:]
+            if len(cols := tr.find_all('td')) >= 2
+        ]
 
+        if not current_table_schema:
+            continue
+
+        # Some PSP schema pages document two tables under a single <h2>, e.g.
+        # "Tabulka tisk_eklep, tz_eklep".  Register the schema under each name.
+        for key in [k.strip() for k in unl_file_key.split(',')]:
+            dynamic_schema[key] = current_table_schema
+            for alias in SCHEMA_ALIASES.get(key, []):
+                dynamic_schema[alias] = current_table_schema
 
     logger.info(f"Schema extraction completed for {html_file_path}.")
     return dynamic_schema
 
-def download_and_extract_zip(zip_url, extract_to_dir):
+
+def download_and_extract_zip(zip_url: str, extract_to_dir: str):
+    """Download a ZIP and extract to extract_to_dir. Skips if .unl files already exist."""
+    existing_unl = [f for f in os.listdir(extract_to_dir) if f.endswith('.unl')] if os.path.isdir(extract_to_dir) else []
+    if existing_unl:
+        logger.info(f"Skipping download of {zip_url} — {len(existing_unl)} .unl file(s) already extracted.")
+        return extract_to_dir
+
     logger.info(f"Downloading {zip_url}...")
     try:
-        response = requests.get(zip_url, stream=True)
+        response = requests.get(zip_url)
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to download {zip_url}: {e}")
         return None
 
     try:
-        with zipfile.ZipFile(BytesIO(response.content)) as zip_ref:
+        # Stream to a temp file to avoid holding large ZIPs in memory
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            tmp.write(response.content)
+            tmp_path = tmp.name
+        with zipfile.ZipFile(tmp_path) as zip_ref:
             zip_ref.extractall(extract_to_dir)
+        os.unlink(tmp_path)
         logger.info(f"Extracted {zip_url} to {extract_to_dir}")
         return extract_to_dir
     except zipfile.BadZipFile:
@@ -203,10 +256,11 @@ def download_and_extract_zip(zip_url, extract_to_dir):
         logger.error(f"Error extracting ZIP file {zip_url}: {e}")
         return None
 
-def parse_unl_file(file_path, schema_def):
+
+def parse_unl_file(file_path: str, schema_def: list) -> pd.DataFrame:
     logger.info(f"Parsing UNL file: {file_path}")
     column_names = [col["name"] for col in schema_def]
-    
+
     try:
         df = pd.read_csv(
             file_path,
@@ -215,7 +269,8 @@ def parse_unl_file(file_path, schema_def):
             names=column_names,
             encoding='cp1250',
             dtype=str,
-            na_values=['']
+            na_values=[''],
+            usecols=range(len(column_names)),  # ignore extra columns from trailing pipes
         )
     except FileNotFoundError:
         logger.error(f"UNL file not found: {file_path}")
@@ -226,298 +281,410 @@ def parse_unl_file(file_path, schema_def):
     except Exception as e:
         logger.error(f"An unexpected error occurred while parsing {file_path}: {e}")
         return pd.DataFrame()
-    
-    # Apply type conversions
+
     for col_def in schema_def:
         col_name = col_def["name"]
         col_type = col_def["type"]
+        if col_name not in df.columns:
+            continue
+        try:
+            if "int" in col_type:
+                df[col_name] = pd.to_numeric(df[col_name], errors='coerce').astype('Int64')
+            elif "date" in col_type:
+                if "datetime" in col_type:
+                    if "second" in col_type:
+                        df[col_name] = pd.to_datetime(df[col_name], format='%Y-%m-%d %H:%M:%S', errors='coerce')
+                    elif "hour" in col_type:
+                        if "year" in col_type:
+                            df[col_name] = pd.to_datetime(df[col_name], format='%Y-%m-%d %H', errors='coerce')
+                        else:
+                            df[col_name] = pd.to_datetime(df[col_name], format='%H:%M', errors='coerce').dt.time
+                else:
+                    df[col_name] = pd.to_datetime(df[col_name], format='%d.%m.%Y', errors='coerce')
+        except Exception as e:
+            logger.warning(
+                f"Failed to convert column '{col_name}' to type '{col_type}' "
+                f"in file '{file_path}': {e}. Column will remain as string."
+            )
 
-        if col_name in df.columns:
-            try:
-                if "int" in col_type:
-                    df[col_name] = pd.to_numeric(df[col_name], errors='coerce').astype('Int64')
-                elif "date" in col_type:
-                    if "datetime" in col_type:
-                        if "second" in col_type:
-                            df[col_name] = pd.to_datetime(df[col_name], format='%Y-%m-%d %H:%M:%S', errors='coerce')
-                        elif "hour" in col_type:
-                            if "year" in col_type:
-                                df[col_name] = pd.to_datetime(df[col_name], format='%Y-%m-%d %H', errors='coerce')
-                            else:
-                                df[col_name] = pd.to_datetime(df[col_name], format='%H:%M', errors='coerce').dt.time
-                    else:
-                        df[col_name] = pd.to_datetime(df[col_name], format='%d.%m.%Y', errors='coerce')
-            except Exception as e:
-                logger.warning(f"Failed to convert column '{col_name}' to type '{col_type}' in file '{file_path}': {e}. Column will remain as object/string.")
-    
     return df
 
-def create_table_with_pk(table_name, schema_def, primary_keys, conn):
-    """
-    Creates an SQLite table with explicit primary key constraints.
-    """
-    columns_sql = []
-    for col in schema_def:
-        col_name = col["name"]
-        col_type = col["type"]
-        sqlite_type = "TEXT" # Default
-        if "int" in col_type:
-            sqlite_type = "INTEGER"
-        elif "date" in col_type or "datetime" in col_type:
-            sqlite_type = "TEXT" # Store as ISO-formatted string
-        
-        columns_sql.append(f"{col_name} {sqlite_type}")
-    
-    pk_constraint = ""
-    if table_name in primary_keys and primary_keys[table_name]:
-        pk_cols = ", ".join(primary_keys[table_name])
-        pk_constraint = f", PRIMARY KEY ({pk_cols})"
-    
-    create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns_sql)}{pk_constraint});"
-    
-    try:
-        conn.execute(create_table_sql)
-        conn.commit()
-        logger.info(f"Table '{table_name}' created or already exists with primary key(s): {primary_keys.get(table_name)}")
-    except sqlite3.Error as e:
-        logger.error(f"Error creating table '{table_name}': {e}")
 
-def load_to_sqlite(df, table_name, schema_def, primary_keys, conn, chunk_size=10000):
+def create_all_tables(dynamic_schema: dict, primary_keys: dict, conn) -> None:
+    """Create all tables upfront before loading data."""
+    for table_name, schema_def in dynamic_schema.items():
+        columns_sql = [f"{col['name']} {psp_type_to_sql(col['type'])}" for col in schema_def]
+        pk_cols = primary_keys.get(table_name, [])
+        pk_constraint = f", PRIMARY KEY ({', '.join(pk_cols)})" if pk_cols else ""
+        sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns_sql)}{pk_constraint});"
+        try:
+            conn.execute(sql)
+        except Exception as e:
+            logger.error(f"Error creating table '{table_name}': {e}")
+    conn.commit()
+    logger.info(f"Ensured {len(dynamic_schema)} tables exist.")
+
+
+def load_to_db(
+    df: pd.DataFrame,
+    table_name: str,
+    primary_keys: dict,
+    conn,
+    chunk_size: int = 10000,
+) -> None:
     logger.info(f"Loading data to table: {table_name}")
     if df.empty:
         logger.warning(f"DataFrame for {table_name} is empty. Skipping load.")
         return
-    
-    # Replace pd.NaT and np.nan with None for sqlite3 compatibility
-    df = df.replace({pd.NaT: None, np.nan: None})
 
-    # Convert datetime.time objects and Timestamp objects to strings for sqlite3 compatibility
-    for col in df.columns:
-        if pd.api.types.is_datetime64_any_dtype(df[col]):
-            # Convert pandas Timestamps to ISO format strings
-            df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S').fillna(value=np.nan).replace({np.nan: None})
-        elif df[col].dtype == 'object': # This might contain Python datetime.time objects
-            # Use apply to avoid SettingWithCopyWarning and handle element-wise
-            df[col] = df[col].apply(lambda x: str(x) if isinstance(x, type(pd.to_datetime('00:00', format='%H:%M').time())) else x)
-        # Ensure any remaining pandas Timestamp (if not caught by is_datetime64_any_dtype) are handled
-        df[col] = df[col].apply(lambda x: None if pd.isna(x) else (x.strftime('%Y-%m-%d %H:%M:%S') if isinstance(x, pd.Timestamp) else x))
+    df = _normalize_df_for_db(df)
 
-
-    # Ensure table exists with primary key
-    create_table_with_pk(table_name, schema_def, primary_keys, conn)
-
-    # Prepare for INSERT OR REPLACE
     columns = ", ".join(df.columns)
     placeholders = ", ".join(["?" for _ in df.columns])
-    
-    # If primary keys are defined, use INSERT OR REPLACE
-    if table_name in primary_keys and primary_keys[table_name]:
-        insert_sql = f"INSERT OR REPLACE INTO {table_name} ({columns}) VALUES ({placeholders});"
+    pk_cols = primary_keys.get(table_name, [])
+    if pk_cols:
+        # Proper upsert: on conflict, update all non-PK columns
+        non_pk_cols = [c for c in df.columns if c not in pk_cols]
+        if non_pk_cols:
+            update_clause = ", ".join(f"{c} = excluded.{c}" for c in non_pk_cols)
+            insert_sql = (
+                f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders}) "
+                f"ON CONFLICT ({', '.join(pk_cols)}) DO UPDATE SET {update_clause};"
+            )
+        else:
+            insert_sql = (
+                f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders}) "
+                f"ON CONFLICT ({', '.join(pk_cols)}) DO NOTHING;"
+            )
     else:
-        # If no explicit PK, just append. User will need to handle duplicates manually if needed.
-        # This is a fallback and might not be ideal for incremental updates without a PK.
         insert_sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
-        logger.warning(f"No explicit primary key defined for table '{table_name}'. Using INSERT (potential for duplicates).")
+        logger.warning(f"No primary key for '{table_name}'. INSERT may produce duplicates.")
 
     try:
         cursor = conn.cursor()
-        # Process DataFrame in chunks
         for i in range(0, len(df), chunk_size):
-            chunk_df = df.iloc[i:i + chunk_size]
-            data_to_insert = [tuple(row) for row in chunk_df.values]
-            cursor.executemany(insert_sql, data_to_insert)
-            conn.commit() # Commit after each chunk
-            logger.info(f"Loaded {len(chunk_df)} rows for {table_name} (chunk {i // chunk_size + 1}).")
-        
-        logger.info(f"Data loaded (or replaced) for {table_name}: {len(df)} total rows.")
-    except sqlite3.Error as e:
-        logger.error(f"Error loading data to table {table_name}: {e}")
+            chunk = df.iloc[i:i + chunk_size]
+            cursor.executemany(insert_sql, [tuple(row) for row in chunk.values])
+            conn.commit()
+            logger.info(f"  {table_name}: loaded chunk {i // chunk_size + 1} ({len(chunk)} rows)")
+        logger.info(f"  {table_name}: {len(df)} total rows loaded.")
     except Exception as e:
-        logger.error(f"An unexpected error occurred while loading data to {table_name}: {e}")
+        logger.error(f"Error loading data to table {table_name}: {e}")
 
-def get_zip_and_schema_urls(data_page_url):
+
+def _extract_term_number(text: str) -> int | None:
+    """Extract the term number from a row's text, e.g. '9. volební období' → 9."""
+    match = re.search(r'(\d+)\.\s*volebn', text)
+    return int(match.group(1)) if match else None
+
+
+def get_zip_and_schema_urls(data_page_url: str) -> list[dict]:
+    """Scrape the PSP data page and return [{zip_url, schema_doc_url, term}, ...] entries.
+
+    'term' is the electoral term number (1–10) or None if it could not be detected.
     """
-    Fetches the data page and extracts all relevant ZIP file URLs and their associated schema documentation URLs.
-    Returns a list of dictionaries: [{"zip_url": "...", "schema_doc_url": "..."}, ...]
-    """
-    logger.info(f"Fetching data page to discover ZIP files and schema URLs from {data_page_url}...")
+    logger.info(f"Fetching data page: {data_page_url}...")
     zip_schema_pairs = []
     try:
         response = requests.get(data_page_url)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Find the main data table
-        # Assuming the data is within the first <table> after the "Data Poslanecké sněmovny a Senátu" heading
-        data_table = soup.find('table', border="1") # Or more specific selector if needed
-
-        if data_table:
-            # Iterate through table rows
-            for tr in data_table.find_all('tr', valign='top'):
-                zip_url = None
-                schema_doc_url = None
-
-                # Find the ZIP file link
-                zip_link_tag = tr.find('a', href=lambda href: href and href.endswith('.zip'))
-                if zip_link_tag:
-                    zip_url = urllib.parse.urljoin(BASE_URL, zip_link_tag['href'])
-                
-                # Find the schema documentation link (typically in the second <td> of the row)
-                # It's an <a> tag where href starts with "hp.sqw?k="
-                schema_link_tag = tr.find('a', href=lambda href: href and href.startswith('hp.sqw?k='))
-                if schema_link_tag:
-                    schema_doc_url = urllib.parse.urljoin(data_page_url, schema_link_tag['href'])
-                
-                if zip_url: # Only add if we found a ZIP URL
-                    zip_schema_pairs.append({
-                        "zip_url": zip_url,
-                        "schema_doc_url": schema_doc_url # Can be None if no specific schema doc found for this ZIP
-                    })
-        else:
+        data_table = soup.find('table', border="1")
+        if not data_table:
             logger.warning(f"Could not find the main data table on {data_page_url}.")
+            return zip_schema_pairs
+
+        for tr in data_table.find_all('tr'):
+            zip_link = tr.find('a', href=lambda h: h and h.endswith('.zip'))
+            if not zip_link:
+                continue
+            zip_url = urllib.parse.urljoin(BASE_URL, zip_link['href'])
+
+            schema_link = tr.find('a', href=lambda h: h and h.startswith('hp.sqw?k='))
+            schema_doc_url = urllib.parse.urljoin(data_page_url, schema_link['href']) if schema_link else None
+
+            term = _extract_term_number(tr.get_text())
+
+            zip_schema_pairs.append({"zip_url": zip_url, "schema_doc_url": schema_doc_url, "term": term})
 
     except requests.exceptions.RequestException as e:
         logger.error(f"Failed to fetch data page {data_page_url}: {e}")
     except Exception as e:
         logger.error(f"Error parsing data page HTML {data_page_url}: {e}")
-    
+
     logger.info(f"Discovered {len(zip_schema_pairs)} ZIP file entries.")
     return zip_schema_pairs
 
-def get_all_schemas(zip_schema_pairs):
-    """
-    Downloads and extracts schemas from all unique schema documentation URLs.
-    Returns a single aggregated schema dictionary.
-    """
-    logger.info("Aggregating schema definitions from all discovered documentation pages.")
-    aggregated_schema = {}
-    unique_schema_urls = set()
+
+def get_all_schemas(zip_schema_pairs: list[dict], temp_dir: str) -> dict:
+    """Download schema HTML pages and return an aggregated schema dict."""
+    logger.info("Aggregating schema definitions...")
+    aggregated_schema: dict = {}
+    seen_urls: set[str] = set()
 
     for entry in zip_schema_pairs:
-        if entry["schema_doc_url"]:
-            unique_schema_urls.add(entry["schema_doc_url"])
-    
-    for schema_doc_url in unique_schema_urls:
-        # Create a unique filename for the schema HTML page
-        schema_page_basename = os.path.basename(urllib.parse.urlparse(schema_doc_url).path)
-        # Add the query string as well to differentiate pages like hp.sqw?k=1301 and hp.sqw?k=1302
-        query_string = urllib.parse.urlparse(schema_doc_url).query
-        schema_html_filename = f"{schema_page_basename}_{query_string}.html" if query_string else f"{schema_page_basename}.html"
-        
-        schema_html_path = os.path.join(TEMP_DIR, schema_html_filename)
+        schema_doc_url = entry.get("schema_doc_url")
+        if not schema_doc_url or schema_doc_url in seen_urls:
+            continue
+        seen_urls.add(schema_doc_url)
 
-        if not os.path.exists(schema_html_path):
-            logger.info(f"Downloading schema documentation page to {schema_html_path}...")
+        parsed = urllib.parse.urlparse(schema_doc_url)
+        basename = os.path.basename(parsed.path)
+        filename = f"{basename}_{parsed.query}.html" if parsed.query else f"{basename}.html"
+        html_path = os.path.join(temp_dir, filename)
+
+        if not os.path.exists(html_path):
             try:
                 response = requests.get(schema_doc_url)
                 response.raise_for_status()
-                with open(schema_html_path, 'wb') as f:
+                with open(html_path, 'wb') as f:
                     f.write(response.content)
-                logger.info("Schema documentation downloaded.")
             except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to download schema documentation from {schema_doc_url}: {e}. Skipping schema extraction for this page.")
+                logger.error(f"Failed to download schema from {schema_doc_url}: {e}. Skipping.")
                 continue
-        
-        extracted_schema = extract_schema_from_html(schema_html_path)
-        aggregated_schema.update(extracted_schema) # Merge schemas
 
-    logger.info(f"Aggregated schema contains definitions for {len(aggregated_schema)} tables.")
+        aggregated_schema.update(extract_schema_from_html(html_path))
+
+    logger.info(f"Aggregated schema: {len(aggregated_schema)} tables.")
     return aggregated_schema
 
-def generate_sql_schema_file(dynamic_schema, primary_keys, output_file_path):
-    """
-    Generates a SQL schema file from the dynamic schema definitions.
-    """
+
+def generate_sql_schema_file(dynamic_schema: dict, primary_keys: dict, output_file_path: str) -> None:
+    """Write CREATE TABLE statements for all tables to a SQL file."""
     logger.info(f"Generating SQL schema file: {output_file_path}")
     with open(output_file_path, 'w', encoding='utf-8') as f:
         for table_name, schema_def in dynamic_schema.items():
-            columns_sql = []
-            for col in schema_def:
-                col_name = col["name"]
-                col_type = col["type"]
-                sqlite_type = "TEXT" # Default
-                if "int" in col_type:
-                    sqlite_type = "INTEGER"
-                elif "date" in col_type or "datetime" in col_type:
-                    sqlite_type = "TEXT" # Store as ISO-formatted string
-                
-                columns_sql.append(f"{col_name} {sqlite_type}")
-            
-            pk_constraint = ""
-            if table_name in primary_keys and primary_keys[table_name]:
-                pk_cols = ", ".join(primary_keys[table_name])
-                pk_constraint = f", PRIMARY KEY ({pk_cols})"
-            
-            create_table_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns_sql)}{pk_constraint});\n"
-            f.write(create_table_sql)
-    logger.info("SQL schema file generated successfully.")
+            columns_sql = [f"{col['name']} {psp_type_to_sql(col['type'])}" for col in schema_def]
+            pk_cols = primary_keys.get(table_name, [])
+            pk_constraint = f", PRIMARY KEY ({', '.join(pk_cols)})" if pk_cols else ""
+            f.write(f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(columns_sql)}{pk_constraint});\n")
+    logger.info("SQL schema file generated.")
 
-def main():
+
+def compute_mp_stats(conn) -> None:
+    """Compute and upsert per-MP summary statistics into the mp_stats table.
+
+    Requires: poslanec, hl_poslanec, tisky, predkladatel, navrh_podpis,
+              rec, los_interpelaci tables to be populated.
+    """
+    logger.info("Computing mp_stats...")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mp_stats (
+            id_poslanec           INTEGER PRIMARY KEY,
+            id_osoba              INTEGER,
+            term_id               INTEGER,
+            votes_total           INTEGER,
+            votes_present         INTEGER,
+            votes_cast            INTEGER,
+            votes_absent          INTEGER,
+            votes_excused         INTEGER,
+            participation_pct     REAL,
+            bills_authored        INTEGER,
+            bills_cosigned        INTEGER,
+            speeches_count        INTEGER,
+            interpellations_count INTEGER,
+            updated_at            TEXT DEFAULT (datetime('now'))
+        );
+    """)
+    conn.commit()
+
+    # voting stats — vysledek values:
+    #   A=ano, B/N=ne, C=zdržel, F=nehlasoval (byl přihlášen), @=nepřihlášen,
+    #   M=omluven, W=před slibem, K=zdržel/nehlasoval
+    #   "present" = A B C F K (was registered, whether voted or not)
+    #   "cast"    = A B C   (actually pressed a button with a clear intent)
+    #   "absent"  = @        (not registered at all)
+    #   "excused" = M
+    cursor.execute("""
+        INSERT INTO mp_stats (
+            id_poslanec, id_osoba, term_id,
+            votes_total, votes_present, votes_cast, votes_absent, votes_excused,
+            participation_pct,
+            bills_authored, bills_cosigned,
+            speeches_count, interpellations_count,
+            updated_at
+        )
+        SELECT
+            p.id_poslanec,
+            p.id_osoba,
+            p.id_obdobi,
+            COUNT(*)                                                        AS votes_total,
+            SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END) AS votes_present,
+            SUM(CASE WHEN hp.vysledek IN ('A','B','N','C')         THEN 1 ELSE 0 END) AS votes_cast,
+            SUM(CASE WHEN hp.vysledek = '@'                        THEN 1 ELSE 0 END) AS votes_absent,
+            SUM(CASE WHEN hp.vysledek = 'M'                        THEN 1 ELSE 0 END) AS votes_excused,
+            ROUND(
+                100.0 * SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END)
+                / NULLIF(COUNT(*), 0),
+                2
+            )                                                               AS participation_pct,
+            COALESCE(authored.cnt, 0)                                       AS bills_authored,
+            COALESCE(cosigned.cnt, 0)                                       AS bills_cosigned,
+            COALESCE(speeches.cnt, 0)                                       AS speeches_count,
+            COALESCE(interps.cnt, 0)                                        AS interpellations_count,
+            datetime('now')
+        FROM poslanec p
+        JOIN hl_poslanec hp ON hp.id_poslanec = p.id_poslanec
+        LEFT JOIN (
+            SELECT id_osoba, COUNT(*) AS cnt FROM predkladatel GROUP BY id_osoba
+        ) authored  ON authored.id_osoba  = p.id_osoba
+        LEFT JOIN (
+            SELECT id_osoba, COUNT(*) AS cnt FROM navrh_podpis GROUP BY id_osoba
+        ) cosigned  ON cosigned.id_osoba  = p.id_osoba
+        LEFT JOIN (
+            SELECT id_osoba, COUNT(*) AS cnt FROM rec GROUP BY id_osoba
+        ) speeches  ON speeches.id_osoba  = p.id_osoba
+        LEFT JOIN (
+            -- los_interpelaci holds sessions; poradi links MPs to interpellations
+            SELECT id_poslanec, COUNT(*) AS cnt FROM poradi GROUP BY id_poslanec
+        ) interps   ON interps.id_poslanec = p.id_poslanec
+        GROUP BY p.id_poslanec
+        ON CONFLICT (id_poslanec) DO UPDATE SET
+            id_osoba              = excluded.id_osoba,
+            term_id               = excluded.term_id,
+            votes_total           = excluded.votes_total,
+            votes_present         = excluded.votes_present,
+            votes_cast            = excluded.votes_cast,
+            votes_absent          = excluded.votes_absent,
+            votes_excused         = excluded.votes_excused,
+            participation_pct     = excluded.participation_pct,
+            bills_authored        = excluded.bills_authored,
+            bills_cosigned        = excluded.bills_cosigned,
+            speeches_count        = excluded.speeches_count,
+            interpellations_count = excluded.interpellations_count,
+            updated_at            = excluded.updated_at;
+    """)
+    conn.commit()
+
+    rows = cursor.execute("SELECT COUNT(*) FROM mp_stats;").fetchone()[0]
+    logger.info(f"mp_stats: {rows} rows computed.")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="PSP Parliament ETL — load Czech parliament data.")
+    parser.add_argument("--temp-dir", default=TEMP_DIR,
+                        help="Directory for downloaded ZIPs and schema pages.")
+    parser.add_argument("--db-url", default=DB_NAME,
+                        help="Database URL: a libsql://... Turso URL or a local SQLite path. "
+                             "Defaults to TURSO_DATABASE_URL → DATABASE_URL → local file.")
+    parser.add_argument("--schema-file", default=SCHEMA_SQL_FILE,
+                        help="Output SQL schema file path.")
+    parser.add_argument("--term", type=int, nargs="+", metavar="N",
+                        help="Only load data for these electoral term numbers (e.g. --term 9 or --term 8 9). "
+                             "Shared reference data (osoby, organy, etc.) is always included. "
+                             "Run with --list-terms to see what is available.")
+    parser.add_argument("--list-terms", action="store_true",
+                        help="Print available terms and their ZIP counts, then exit.")
+    parser.add_argument("--cleanup", action="store_true",
+                        help="Delete extracted .unl files after loading each ZIP.")
+    parser.add_argument("--skip-stats", action="store_true",
+                        help="Skip the mp_stats computation step after loading.")
+    parser.add_argument("--log-level", default="INFO",
+                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                        help="Logging verbosity (default: INFO).")
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    logging.getLogger().setLevel(getattr(logging, args.log_level))
+    temp_dir = os.path.expanduser(args.temp_dir)
+    extract_dir = os.path.join(temp_dir, "extracted_data")
+    os.makedirs(extract_dir, exist_ok=True)
+
     logger.info("Starting ETL process.")
-    if not os.path.exists(EXTRACT_DIR):
-        os.makedirs(EXTRACT_DIR)
-        logger.info(f"Created extraction directory: {EXTRACT_DIR}")
 
-    # 1. Discover all ZIP file URLs and their associated schema documentation URLs
     all_zip_schema_pairs = get_zip_and_schema_urls(DATA_PAGE_URL)
     if not all_zip_schema_pairs:
-        logger.critical(f"No ZIP file entries found on {DATA_PAGE_URL}. Aborting ETL.")
+        logger.critical(f"No ZIP entries found on {DATA_PAGE_URL}. Aborting.")
         return
 
-    # 2. Aggregate all schema definitions from the discovered documentation pages
-    dynamic_schema = get_all_schemas(all_zip_schema_pairs)
-    
+    if args.list_terms:
+        from collections import Counter
+        counts = Counter(e["term"] for e in all_zip_schema_pairs)
+        print("Available terms (term number → ZIP count):")
+        for term in sorted(t for t in counts if t is not None):
+            print(f"  {term:2d}. volební období — {counts[term]} ZIP(s)")
+        unknown = counts.get(None, 0)
+        if unknown:
+            print(f"   ?  (shared / term not detected) — {unknown} ZIP(s)")
+        return
+
+    if args.term:
+        requested = set(args.term)
+        # Always include entries with no term (shared reference data: osoby, organy, etc.)
+        all_zip_schema_pairs = [
+            e for e in all_zip_schema_pairs
+            if e["term"] in requested or e["term"] is None
+        ]
+        if not all_zip_schema_pairs:
+            logger.critical(f"No ZIP entries found for term(s) {sorted(requested)}. "
+                            f"Run with --list-terms to see what is available.")
+            return
+        logger.info(f"Filtered to term(s) {sorted(requested)}: {len(all_zip_schema_pairs)} ZIP(s) "
+                     f"(including shared reference data).")
+
+    dynamic_schema = get_all_schemas(all_zip_schema_pairs, temp_dir)
     if not dynamic_schema:
-        logger.critical("Failed to aggregate any schema definitions. Aborting ETL.")
+        logger.critical("No schema definitions found. Aborting.")
         return
 
-    # Generate SQL schema file
-    generate_sql_schema_file(dynamic_schema, PRIMARY_KEYS, SCHEMA_SQL_FILE)
+    generate_sql_schema_file(dynamic_schema, PRIMARY_KEYS, args.schema_file)
 
+    total_zips = len(all_zip_schema_pairs)
     conn = None
     try:
-        conn = sqlite3.connect(DB_NAME)
-        logger.info(f"Connected to SQLite database: {DB_NAME}")
+        conn = connect_db(args.db_url, temp_dir)
 
-        # 3. Process each discovered ZIP file
-        for entry in all_zip_schema_pairs:
-            zip_file_url = entry["zip_url"]
-            zip_file_name_base = os.path.splitext(os.path.basename(zip_file_url))[0]
-            current_extract_dir = os.path.join(EXTRACT_DIR, zip_file_name_base)
-            
-            if not os.path.exists(current_extract_dir):
-                os.makedirs(current_extract_dir)
-                logger.info(f"Created extraction directory for {zip_file_name_base}: {current_extract_dir}")
+        create_all_tables(dynamic_schema, PRIMARY_KEYS, conn)
 
-            extracted_data_path = download_and_extract_zip(zip_file_url, current_extract_dir)
-            
-            if extracted_data_path:
-                # Process each UNL file in the extracted directory
-                unl_files_in_zip = [f for f in os.listdir(current_extract_dir) if f.endswith('.unl')]
+        for zip_idx, entry in enumerate(all_zip_schema_pairs, 1):
+            zip_url = entry["zip_url"]
+            zip_name = os.path.splitext(os.path.basename(zip_url))[0]
+            current_extract_dir = os.path.join(extract_dir, zip_name)
+            os.makedirs(current_extract_dir, exist_ok=True)
 
-                for unl_file_name in unl_files_in_zip:
-                    table_name = os.path.splitext(unl_file_name)[0].lower()
-                    if table_name in dynamic_schema:
-                        unl_file_path = os.path.join(current_extract_dir, unl_file_name)
-                        df = parse_unl_file(unl_file_path, dynamic_schema[table_name])
-                        # Pass primary_keys to load_to_sqlite
-                        load_to_sqlite(df, table_name, dynamic_schema[table_name], PRIMARY_KEYS, conn)
-                    else:
-                        logger.warning(f"No schema found for UNL file '{unl_file_name}'. Skipping.")
-            else:
-                logger.warning(f"Skipping processing for {zip_file_url} due to previous download/extraction error.")
+            logger.info(f"[{zip_idx}/{total_zips}] Processing {zip_name}...")
 
+            if not download_and_extract_zip(zip_url, current_extract_dir):
+                logger.warning(f"[{zip_idx}/{total_zips}] Skipping {zip_url} due to download/extraction error.")
+                continue
 
-    except sqlite3.Error as e:
-        logger.critical(f"Database error: {e}. Aborting ETL.")
+            for unl_file in (f for f in os.listdir(current_extract_dir) if f.endswith('.unl')):
+                file_base = os.path.splitext(unl_file)[0].lower()
+                target_table = _resolve_table(file_base)
+                # Schema lookup: use the resolved target (which is the base table name)
+                schema_key = target_table
+                if schema_key not in dynamic_schema:
+                    logger.warning(f"No schema for '{unl_file}' (resolved to '{target_table}'). Skipping.")
+                    continue
+                df = parse_unl_file(os.path.join(current_extract_dir, unl_file), dynamic_schema[schema_key])
+                load_to_db(df, target_table, PRIMARY_KEYS, conn)
+
+            if args.cleanup:
+                shutil.rmtree(current_extract_dir, ignore_errors=True)
+                logger.info(f"  Cleaned up {current_extract_dir}")
+
+        if not args.skip_stats:
+            compute_mp_stats(conn)
+
+        if args.db_url.startswith("libsql://"):
+            logger.info("Syncing local replica to Turso...")
+            conn.sync()
+            logger.info("Sync complete.")
+
     except Exception as e:
-        logger.critical(f"An unexpected critical error occurred: {e}. Aborting ETL.")
+        logger.critical(f"Database error: {e}. Aborting.")
     finally:
         if conn:
             conn.close()
-            logger.info("Disconnected from SQLite database.")
-            
-    logger.info(f"ETL process completed. Database saved to: {DB_NAME}")
+            logger.info("Database connection closed.")
+
+    logger.info(f"ETL complete. Database: {args.db_url}")
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,42 @@
+{
+  "nav": {
+    "home": "Přehled",
+    "mps": "Poslanci",
+    "title": "Prověř poslance"
+  },
+  "home": {
+    "title": "Přehled poslanců",
+    "subtitle": "Jak pracují vaši zástupci v 9. volebním období"
+  },
+  "mps": {
+    "title": "Poslanci",
+    "search": "Hledat poslance...",
+    "filterParty": "Filtrovat dle strany",
+    "allParties": "Všechny strany",
+    "sortBy": "Řadit dle",
+    "participation": "Účast na hlasování",
+    "bills": "Tisky",
+    "speeches": "Projevy",
+    "interpellations": "Interpelace"
+  },
+  "mp": {
+    "participation": "Účast na hlasování",
+    "billsAuthored": "Podané tisky",
+    "billsCosigned": "Spolupodepsané tisky",
+    "speeches": "Projevy",
+    "interpellations": "Interpelace",
+    "votesTotal": "Celkem hlasování",
+    "votesPresent": "Přítomen",
+    "votesAbsent": "Nepřítomen",
+    "votesExcused": "Omluven",
+    "profile": "Profil",
+    "viewProfile": "Zobrazit profil"
+  },
+  "stats": {
+    "topParticipation": "Nejvyšší účast",
+    "bottomParticipation": "Nejnižší účast",
+    "topBills": "Nejvíce tisků",
+    "topSpeeches": "Nejvíce projevů",
+    "topInterpellations": "Nejvíce interpelací"
+  }
+}
