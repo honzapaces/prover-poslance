@@ -93,18 +93,36 @@ export default async function LocaleLayout({
         {/* Footer */}
         <footer
           style={{ borderTop: "1px solid var(--cr-border)" }}
-          className="mt-16 py-6"
+          className="mt-16 py-8"
         >
-          <div
-            className="max-w-6xl mx-auto px-6 flex items-center justify-between"
-          >
-            <span
-              style={{ color: "var(--cr-text-faint)", fontSize: "0.8rem" }}
-              className="font-medium tracking-wide uppercase"
-            >
-              {t.nav.title}
-            </span>
-            <div className="flex items-center gap-3">
+          <div className="max-w-6xl mx-auto px-6 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <span
+                style={{ color: "var(--cr-text-faint)", fontSize: "0.8rem" }}
+                className="font-medium tracking-wide uppercase"
+              >
+                {t.nav.title}
+              </span>
+              <a
+                href="https://www.psp.cz/sqw/hp.sqw?k=1300"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--cr-text-muted)", fontSize: "0.8rem" }}
+                className="hover:underline"
+              >
+                {t.footer.dataSource} ↗
+              </a>
+            </div>
+            <div className="flex items-center gap-4">
+              <a
+                href="https://github.com/honzapaces/prover-poslance"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--cr-text-muted)", fontSize: "0.8rem" }}
+                className="hover:underline"
+              >
+                {t.footer.sourceCode} ↗
+              </a>
               <div
                 className="tricolor-bar rounded-sm"
                 style={{ width: "36px", height: "4px" }}

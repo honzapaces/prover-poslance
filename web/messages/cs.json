@@ -6,7 +6,7 @@
   },
   "home": {
     "title": "Přehled poslanců",
-    "subtitle": "Jak pracují vaši zástupci v 9. volebním období"
+    "subtitle": "Jak pracují vaši zástupci v 10. volebním období"
   },
   "mps": {
     "title": "Poslanci",
@@ -31,6 +31,10 @@
     "votesExcused": "Omluven",
     "profile": "Profil",
     "viewProfile": "Zobrazit profil"
+  },
+  "footer": {
+    "dataSource": "Data: Poslanecká sněmovna ČR",
+    "sourceCode": "Zdrojový kód"
   },
   "stats": {
     "topParticipation": "Nejvyšší účast",

@@ -6,7 +6,7 @@
   },
   "home": {
     "title": "MP Overview",
-    "subtitle": "How your representatives work in the 9th parliamentary term"
+    "subtitle": "How your representatives work in the 10th parliamentary term"
   },
   "mps": {
     "title": "Members of Parliament",
@@ -31,6 +31,10 @@
     "votesExcused": "Excused",
     "profile": "Profile",
     "viewProfile": "View profile"
+  },
+  "footer": {
+    "dataSource": "Data: Chamber of Deputies of the Czech Republic",
+    "sourceCode": "Source code"
   },
   "stats": {
     "topParticipation": "Highest participation",
