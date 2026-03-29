@@ -35,6 +35,7 @@ DB_NAME = (
     or os.path.join(TEMP_DIR, "parliament_data.db")
 )
 SCHEMA_SQL_FILE = "schema.sql"
+SCHEMA_MD_FILE  = "SCHEMA.md"
 
 # Year-specific voting files use different schemas depending on the suffix:
 #   s  → hl_hlasovani  (one row per vote session, 17 cols)
@@ -122,6 +123,87 @@ PRIMARY_KEYS = {
 # They are kept as separate tables for per-year queries rather than consolidated.
 for _y in _HL_YEARS:
     PRIMARY_KEYS[f"hl{_y}s"] = ["id_hlasovani"]
+
+# ── Domain groupings for SCHEMA.md ───────────────────────────────────────────
+TABLE_GROUPS: dict[str, list[str]] = {
+    "People & Organisation": [
+        "osoby", "poslanec", "pkgps", "zarazeni", "osoba_extra",
+        "organy", "typ_organu", "funkce", "typ_funkce",
+    ],
+    "Voting": [
+        "hl_hlasovani", "hl_poslanec", "hl_zposlanec", "hl_vazby",
+        "hl_check", "zmatecne", "omluvy",
+    ],
+    "Bills (Tisky)": [
+        "tisky", "druh_tisku", "stavy", "typ_stavu", "typ_zakon",
+        "predkladatel", "navrh_podpis", "tisky_za", "tisk_eklep", "tz_eklep",
+        "hist", "hist_vybory", "vysledek", "prechody", "sbirka", "sb_pre",
+    ],
+    "Sessions (Schůze)": [
+        "schuze", "bod_schuze", "bod_stav", "schuze_stav",
+    ],
+    "Interpellations": [
+        "los_interpelaci", "poradi", "uitypv", "ui_stav",
+    ],
+    "Speeches & Stenography": [
+        "steno", "steno_bod", "rec", "se_tisk", "se_druh_tisku", "psp2senat",
+    ],
+    "Lookup / Reference": [
+        "typ_akce", "sd_dokument", "druh_predpisu",
+    ],
+}
+
+TABLE_DESCRIPTIONS: dict[str, str] = {
+    "osoby":           "Physical persons (MPs, ministers, substitutes).",
+    "poslanec":        "MP record for one parliamentary term. One person → many poslanec rows across terms.",
+    "pkgps":           "Constituency GPS coordinates for each MP.",
+    "zarazeni":        "Club/committee membership intervals for a person.",
+    "osoba_extra":     "Extra external IDs or URLs for a person (e.g. social media).",
+    "organy":          "Parliamentary bodies: chambers, committees, clubs, governments.",
+    "typ_organu":      "Lookup: body type (chamber, committee, club, …).",
+    "funkce":          "Named roles within a body (Chairman, Deputy, …).",
+    "typ_funkce":      "Lookup: function category.",
+    "hl_hlasovani":    "One row per vote session. Also used as schema for hl<YEAR>s tables.",
+    "hl_poslanec":     "Individual MP vote result for one session. `vysledek` codes: A=yes, B/N=no, C=abstain, F=registered but did not vote, @=absent, M=excused (omluven), W=before oath, K=abstain variant.",
+    "hl_zposlanec":    "Substitute MP vote records.",
+    "hl_vazby":        "Links a vote session to additional organs.",
+    "hl_check":        "Vote integrity / validation metadata.",
+    "zmatecne":        "Flags a vote session as procedurally void.",
+    "omluvy":          "Formal advance excuse filed by an MP for a specific day. `od`/`do` = time range (nullable).",
+    "tisky":           "Parliamentary prints (bills, reports, petitions, …).",
+    "druh_tisku":      "Lookup: print type.",
+    "stavy":           "Lookup: bill status codes.",
+    "typ_stavu":       "Lookup: status type.",
+    "typ_zakon":       "Lookup: law type.",
+    "predkladatel":    "Primary submitter(s) of a bill.",
+    "navrh_podpis":    "Co-signatories of a bill.",
+    "tisky_za":        "Bill versions / amendments.",
+    "tisk_eklep":      "EKLEP (government legislative plan) entries linked to prints.",
+    "tz_eklep":        "EKLEP entries linked to bill versions.",
+    "hist":            "Legislative history events for a bill.",
+    "hist_vybory":     "Committee participation in a history event.",
+    "vysledek":        "Lookup: legislative result codes.",
+    "prechody":        "Lookup: legislative transition labels.",
+    "sbirka":          "Published law collection entries.",
+    "sb_pre":          "Links a collection entry to its source prints.",
+    "schuze":          "Plenary session (schůze) header.",
+    "bod_schuze":      "Agenda item within a session.",
+    "bod_stav":        "Lookup: agenda item status.",
+    "schuze_stav":     "Status history of a session.",
+    "los_interpelaci": "Interpellation lottery draw session.",
+    "poradi":          "Ordered interpellation within a lottery.",
+    "uitypv":          "Interpellation type assignment.",
+    "ui_stav":         "Status of an interpellation.",
+    "steno":           "Stenographic session header.",
+    "steno_bod":       "Stenographic record for one agenda item.",
+    "rec":             "Individual speech record (speaker + session + item).",
+    "se_tisk":         "Senate print cross-reference.",
+    "se_druh_tisku":   "Senate print type lookup.",
+    "psp2senat":       "Mapping from Chamber print to Senate equivalent.",
+    "typ_akce":        "Lookup: action type.",
+    "sd_dokument":     "Shared document metadata.",
+    "druh_predpisu":   "Lookup: regulation type.",
+}
 
 
 def connect_db(db_url: str, temp_dir: str):
@@ -536,6 +618,131 @@ def generate_sql_schema_file(dynamic_schema: dict, primary_keys: dict, output_fi
     logger.info("SQL schema file generated.")
 
 
+def generate_md_schema_file(dynamic_schema: dict, primary_keys: dict, output_file_path: str) -> None:
+    """Write a navigable Markdown schema reference to output_file_path."""
+    logger.info(f"Generating Markdown schema file: {output_file_path}")
+
+    # Build the set of all grouped tables so we can catch unclassified ones.
+    grouped: set[str] = {t for tables in TABLE_GROUPS.values() for t in tables}
+    hl_year_set = {f"hl{y}s" for y in _HL_YEARS}
+    hl_first = min(_HL_YEARS)
+    hl_last  = max(_HL_YEARS)
+
+    def _anchor(name: str) -> str:
+        """GitHub-flavoured Markdown heading anchor (strips non-word chars, collapses spaces)."""
+        lowered = name.lower()
+        stripped = re.sub(r'[^\w\s-]', '', lowered)   # keep word chars, spaces, hyphens
+        return re.sub(r'\s+', '-', stripped.strip())    # spaces → single hyphen
+
+    def _table_section(table_name: str) -> list[str]:
+        lines: list[str] = []
+        lines.append(f"### {table_name}\n")
+        desc = TABLE_DESCRIPTIONS.get(table_name)
+        if desc:
+            lines.append(f"{desc}\n")
+        schema_def = dynamic_schema.get(table_name)
+        if not schema_def:
+            lines.append("_No columns found in dynamic schema._\n")
+            return lines
+        pk_cols = primary_keys.get(table_name, [])
+        composite = len(pk_cols) > 1
+        lines.append("| Column | Type | Notes |")
+        lines.append("|--------|------|-------|")
+        for col in schema_def:
+            col_name = col["name"]
+            col_type = psp_type_to_sql(col["type"])
+            if col_name in pk_cols:
+                note = "PK (composite)" if composite else "PK"
+            else:
+                note = ""
+            lines.append(f"| `{col_name}` | {col_type} | {note} |")
+        lines.append("")
+        return lines
+
+    with open(output_file_path, "w", encoding="utf-8") as f:
+        def w(line: str = "") -> None:
+            f.write(line + "\n")
+
+        # ── Title & intro ────────────────────────────────────────────────────
+        w("# Czech Parliament (PSP) Database Schema")
+        w()
+        w("Auto-generated by `etl_script.py` from [PSP open data](https://www.psp.cz/sqw/hp.sqw?k=1300).")
+        w("See `erd.md` for an entity-relationship diagram.")
+        w()
+
+        # ── Table of contents ────────────────────────────────────────────────
+        w("## Table of Contents")
+        w()
+        for group_name, tables in TABLE_GROUPS.items():
+            w(f"- [{group_name}](#{_anchor(group_name)})")
+            for t in tables:
+                w(f"  - [{t}](#{t})")
+            if group_name == "Voting":
+                w(f"  - [hl\\<YEAR\\>s ({hl_first}–{hl_last})](#year-specific-voting-tables)")
+        w(f"- [Year-specific voting tables](#year-specific-voting-tables)")
+        w(f"- [Notes](#notes)")
+
+        unclassified = [t for t in dynamic_schema if t not in grouped and t not in hl_year_set]
+        if unclassified:
+            w(f"- [Other Tables](#other-tables)")
+        w()
+
+        # ── Sections by group ────────────────────────────────────────────────
+        for group_name, tables in TABLE_GROUPS.items():
+            w(f"## {group_name}")
+            w()
+            for table_name in tables:
+                for line in _table_section(table_name):
+                    w(line)
+
+        # ── Year-specific voting tables ──────────────────────────────────────
+        w("## Year-specific voting tables")
+        w()
+        w(f"Tables `hl{hl_first}s` through `hl{hl_last}s` each hold one year's plenary vote sessions.")
+        w("They share the same schema as [`hl_hlasovani`](#hl_hlasovani) and use `id_hlasovani` as their primary key.")
+        w()
+        w("| Table | Description |")
+        w("|-------|-------------|")
+        for y in _HL_YEARS:
+            w(f"| `hl{y}s` | Plenary vote sessions for {y} |")
+        w()
+
+        # ── Notes ────────────────────────────────────────────────────────────
+        w("## Notes")
+        w()
+        w("### `vysledek` vote result codes (hl_poslanec)")
+        w()
+        w("| Code | Meaning |")
+        w("|------|---------|")
+        w("| `A`  | Ano — Yes |")
+        w("| `B` / `N` | Ne — No |")
+        w("| `C`  | Zdržel se — Abstain |")
+        w("| `F`  | Nehlasoval (byl přihlášen) — Registered but did not press a button |")
+        w("| `@`  | Nepřihlášen — Absent / not registered |")
+        w("| `M`  | Omluven — Formally excused |")
+        w("| `W`  | Před slibem — Before taking the oath (new MP) |")
+        w("| `K`  | Zdržel / nehlasoval variant |")
+        w()
+        w("**Participation buckets used in `mp_stats`:**")
+        w("- `present` = A B C F K (was registered, whether or not they pressed a button)")
+        w("- `cast` = A B C (pressed a button with clear intent)")
+        w("- `absent` = @ (not registered at all)")
+        w("- `excused` = M")
+        w()
+
+        # ── Other (unclassified) tables ──────────────────────────────────────
+        if unclassified:
+            w("## Other Tables")
+            w()
+            w("_These tables appeared in the dynamic schema but are not assigned to a domain group above._")
+            w()
+            for table_name in sorted(unclassified):
+                for line in _table_section(table_name):
+                    w(line)
+
+    logger.info("Markdown schema file generated.")
+
+
 def compute_mp_stats(conn) -> None:
     """Compute and upsert per-MP summary statistics into the mp_stats table.
 
@@ -563,6 +770,10 @@ def compute_mp_stats(conn) -> None:
             updated_at            TEXT DEFAULT (datetime('now'))
         );
     """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_omluvy_poslanec_organ_den
+        ON omluvy(id_poslanec, id_organ, den);
+    """)
     conn.commit()
 
     # voting stats — vysledek values:
@@ -570,9 +781,22 @@ def compute_mp_stats(conn) -> None:
     #   M=omluven, W=před slibem, K=zdržel/nehlasoval
     #   "present" = A B C F K (was registered, whether voted or not)
     #   "cast"    = A B C   (actually pressed a button with a clear intent)
-    #   "absent"  = @        (not registered at all)
-    #   "excused" = M
-    cursor.execute("""
+    #   "absent"  = @  (not registered and no matching omluvy record)
+    #   "excused" = M  (M in source data, OR @ reclassified via omluvy date+time match)
+    #
+    # omluvy reclassification: if vysledek='@' and the vote's date+time falls within
+    # a filed excuse for that MP and organ, the vote is counted as excused (M), not absent.
+    # Registered votes (A/B/N/C/F/K) always take precedence over any excuse on file.
+    # Note: if PSP records excuses against the parent chamber organ while votes record
+    # a sub-organ, the id_organ join will produce 0 matches — verify after first ETL run.
+    union_sql = " UNION ALL ".join(
+        f'SELECT id_hlasovani, id_organ, datum, "čas" AS cas FROM hl{y}s'
+        for y in _HL_YEARS
+    )
+    cursor.execute(f"""
+        WITH vote_sessions AS (
+            {union_sql}
+        )
         INSERT INTO mp_stats (
             id_poslanec, id_osoba, term_id,
             votes_total, votes_present, votes_cast, votes_absent, votes_excused,
@@ -588,8 +812,11 @@ def compute_mp_stats(conn) -> None:
             COUNT(*)                                                        AS votes_total,
             SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END) AS votes_present,
             SUM(CASE WHEN hp.vysledek IN ('A','B','N','C')         THEN 1 ELSE 0 END) AS votes_cast,
-            SUM(CASE WHEN hp.vysledek = '@'                        THEN 1 ELSE 0 END) AS votes_absent,
-            SUM(CASE WHEN hp.vysledek = 'M'                        THEN 1 ELSE 0 END) AS votes_excused,
+            SUM(CASE WHEN hp.vysledek = '@' AND om.den IS NULL
+                THEN 1 ELSE 0 END)                                         AS votes_absent,
+            SUM(CASE WHEN hp.vysledek = 'M'
+                          OR (hp.vysledek = '@' AND om.den IS NOT NULL)
+                THEN 1 ELSE 0 END)                                         AS votes_excused,
             ROUND(
                 100.0 * SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END)
                 / NULLIF(COUNT(*), 0),
@@ -602,6 +829,18 @@ def compute_mp_stats(conn) -> None:
             datetime('now')
         FROM poslanec p
         JOIN hl_poslanec hp ON hp.id_poslanec = p.id_poslanec
+        JOIN vote_sessions hh ON hh.id_hlasovani = hp.id_hlasovani
+        LEFT JOIN omluvy om
+            ON  om.id_poslanec = hp.id_poslanec
+            AND om.id_organ    = hh.id_organ
+            AND SUBSTR(hh.datum, 1, 10) = SUBSTR(om.den, 1, 10)
+            AND (
+                (om.od IS NULL AND om."do" IS NULL)
+                OR (
+                    (om.od  IS NULL OR SUBSTR(hh.cas, 1, 5) >= SUBSTR(om.od,    1, 5))
+                AND (om."do" IS NULL OR SUBSTR(hh.cas, 1, 5) <= SUBSTR(om."do", 1, 5))
+                )
+            )
         LEFT JOIN (
             SELECT id_osoba, COUNT(*) AS cnt FROM predkladatel GROUP BY id_osoba
         ) authored  ON authored.id_osoba  = p.id_osoba
@@ -742,6 +981,8 @@ def parse_args() -> argparse.Namespace:
                              "Defaults to TURSO_DATABASE_URL → DATABASE_URL → local file.")
     parser.add_argument("--schema-file", default=SCHEMA_SQL_FILE,
                         help="Output SQL schema file path.")
+    parser.add_argument("--schema-md-file", default=SCHEMA_MD_FILE,
+                        help="Output Markdown schema file path.")
     parser.add_argument("--term", type=int, nargs="+", metavar="N",
                         help="Only load data for these electoral term numbers (e.g. --term 9 or --term 8 9). "
                              "Shared reference data (osoby, organy, etc.) is always included. "
@@ -823,6 +1064,7 @@ def main() -> None:
             return
 
         generate_sql_schema_file(dynamic_schema, PRIMARY_KEYS, args.schema_file)
+        generate_md_schema_file(dynamic_schema, PRIMARY_KEYS, args.schema_md_file)
 
         create_all_tables(dynamic_schema, PRIMARY_KEYS, conn)
 
