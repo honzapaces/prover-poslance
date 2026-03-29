@@ -17,8 +17,8 @@ interface Props {
 
 export function MpCard({ mp, locale, t }: Props) {
   const name = `${mp.prijmeni} ${mp.jmeno}`;
-  const photoUrl = mp.foto
-    ? `https://www.psp.cz/eknih/cdrom/web/poslanci/${mp.id_poslanec}/foto.jpg`
+  const photoUrl = mp.foto && mp.term_year && mp.id_osoba
+    ? `https://www.psp.cz/eknih/cdrom/${mp.term_year}ps/eknih/${mp.term_year}ps/poslanci/i${mp.id_osoba}.jpg`
     : null;
   const pct = (mp as MpWithStats).participation_pct ?? null;
 

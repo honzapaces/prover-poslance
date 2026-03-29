@@ -24,6 +24,7 @@ export interface MpProfile {
   pred: string | null;
   za: string | null;
   foto: number;
+  term_year: number;
   party_name: string | null;
   party_short: string | null;
 }
@@ -35,6 +36,7 @@ export async function getMpList(): Promise<MpWithStats[]> {
   return query<MpWithStats>(`
     SELECT
       p.id_poslanec, p.id_osoba, p.foto,
+      CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
       o.prijmeni, o.jmeno, o.pred, o.za,
       party.nazev_organu_cz AS party_name,
       party.zkratka         AS party_short,
@@ -46,6 +48,7 @@ export async function getMpList(): Promise<MpWithStats[]> {
     FROM mp_stats s
     JOIN poslanec p  ON p.id_poslanec = s.id_poslanec
     JOIN osoby   o  ON o.id_osoba     = p.id_osoba
+    JOIN organy  org ON org.id_organ  = p.id_obdobi
     LEFT JOIN (
       SELECT z.id_osoba, o.nazev_organu_cz, o.zkratka
       FROM zarazeni z
@@ -63,6 +66,7 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
     `
     SELECT
       p.id_poslanec, p.id_osoba, p.foto,
+      CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
       p.web, p.email, p.telefon, p.obec, p.ulice, p.psc,
       o.prijmeni, o.jmeno, o.pred, o.za, o.narozeni,
       party.nazev_organu_cz AS party_name,
@@ -75,6 +79,7 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
     FROM mp_stats s
     JOIN poslanec p  ON p.id_poslanec = s.id_poslanec
     JOIN osoby   o  ON o.id_osoba     = p.id_osoba
+    JOIN organy  org ON org.id_organ  = p.id_obdobi
     LEFT JOIN (
       SELECT z.id_osoba, o.nazev_organu_cz, o.zkratka
       FROM zarazeni z
@@ -94,12 +99,14 @@ export async function getDashboardOutliers() {
   const [topParticipation, bottomParticipation, topBills, topSpeeches, topInterpellations] =
     await Promise.all([
       query<MpWithStats>(`
-        SELECT p.id_poslanec, o.prijmeni, o.jmeno, p.foto,
+        SELECT p.id_poslanec, p.id_osoba, o.prijmeni, o.jmeno, p.foto,
+               CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.participation_pct
         FROM mp_stats s
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
+        JOIN organy org ON org.id_organ = p.id_obdobi
         LEFT JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
@@ -111,12 +118,14 @@ export async function getDashboardOutliers() {
         ORDER BY s.participation_pct DESC LIMIT 5
       `),
       query<MpWithStats>(`
-        SELECT p.id_poslanec, o.prijmeni, o.jmeno, p.foto,
+        SELECT p.id_poslanec, p.id_osoba, o.prijmeni, o.jmeno, p.foto,
+               CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.participation_pct
         FROM mp_stats s
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
+        JOIN organy org ON org.id_organ = p.id_obdobi
         LEFT JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
@@ -128,12 +137,14 @@ export async function getDashboardOutliers() {
         ORDER BY s.participation_pct ASC LIMIT 5
       `),
       query<MpWithStats>(`
-        SELECT p.id_poslanec, o.prijmeni, o.jmeno, p.foto,
+        SELECT p.id_poslanec, p.id_osoba, o.prijmeni, o.jmeno, p.foto,
+               CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.bills_authored
         FROM mp_stats s
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
+        JOIN organy org ON org.id_organ = p.id_obdobi
         LEFT JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
@@ -144,12 +155,14 @@ export async function getDashboardOutliers() {
         ORDER BY s.bills_authored DESC LIMIT 5
       `),
       query<MpWithStats>(`
-        SELECT p.id_poslanec, o.prijmeni, o.jmeno, p.foto,
+        SELECT p.id_poslanec, p.id_osoba, o.prijmeni, o.jmeno, p.foto,
+               CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.speeches_count
         FROM mp_stats s
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
+        JOIN organy org ON org.id_organ = p.id_obdobi
         LEFT JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z
@@ -160,12 +173,14 @@ export async function getDashboardOutliers() {
         ORDER BY s.speeches_count DESC LIMIT 5
       `),
       query<MpWithStats>(`
-        SELECT p.id_poslanec, o.prijmeni, o.jmeno, p.foto,
+        SELECT p.id_poslanec, p.id_osoba, o.prijmeni, o.jmeno, p.foto,
+               CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.interpellations_count
         FROM mp_stats s
         JOIN poslanec p ON p.id_poslanec = s.id_poslanec
         JOIN osoby o ON o.id_osoba = p.id_osoba
+        JOIN organy org ON org.id_organ = p.id_obdobi
         LEFT JOIN (
           SELECT z.id_osoba, o.zkratka
           FROM zarazeni z

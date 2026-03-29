@@ -8,6 +8,8 @@ import { getDashboardOutliers } from "@/lib/queries";
 
 interface OutlierRow {
   id_poslanec: number;
+  id_osoba: number;
+  term_year: number;
   prijmeni: string;
   jmeno: string;
   foto: number;
@@ -40,8 +42,8 @@ function OutlierList({
         {rows.map((r, i) => {
           const val = r[metricKey] as number;
           const display = format ? format(val) : String(val);
-          const photoUrl = r.foto
-            ? `https://www.psp.cz/eknih/cdrom/web/poslanci/${r.id_poslanec}/foto.jpg`
+          const photoUrl = r.foto && r.term_year && r.id_osoba
+            ? `https://www.psp.cz/eknih/cdrom/${r.term_year}ps/eknih/${r.term_year}ps/poslanci/i${r.id_osoba}.jpg`
             : null;
           return (
             <li key={r.id_poslanec} className="flex items-center gap-3">

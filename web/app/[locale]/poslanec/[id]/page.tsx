@@ -51,8 +51,8 @@ export default async function MpProfilePage({
     .filter(Boolean)
     .join(" ");
 
-  const photoUrl = mp.foto
-    ? `https://www.psp.cz/eknih/cdrom/web/poslanci/${mp.id_poslanec}/foto.jpg`
+  const photoUrl = mp.foto && mp.term_year && mp.id_osoba
+    ? `https://www.psp.cz/eknih/cdrom/${mp.term_year}ps/eknih/${mp.term_year}ps/poslanci/i${mp.id_osoba}.jpg`
     : null;
 
   const totalPresent = mp.votes_total > 0 ? mp.votes_total : 1;
