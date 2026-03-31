@@ -825,7 +825,7 @@ def compute_mp_stats(conn) -> None:
             COALESCE(authored.cnt, 0)                                       AS bills_authored,
             COALESCE(cosigned.cnt, 0)                                       AS bills_cosigned,
             COALESCE(speeches.cnt, 0)                                       AS speeches_count,
-            COALESCE(interps.cnt, 0)                                        AS interpellations_count,
+            COALESCE(interps.cnt, 0) + COALESCE(written_interps.cnt, 0)     AS interpellations_count,
             datetime('now')
         FROM poslanec p
         JOIN hl_poslanec hp ON hp.id_poslanec = p.id_poslanec
@@ -851,9 +851,17 @@ def compute_mp_stats(conn) -> None:
             SELECT id_osoba, COUNT(*) AS cnt FROM rec GROUP BY id_osoba
         ) speeches  ON speeches.id_osoba  = p.id_osoba
         LEFT JOIN (
-            -- los_interpelaci holds sessions; poradi links MPs to interpellations
+            -- los_interpelaci holds sessions; poradi links MPs to oral interpellations (terms 165–167)
             SELECT id_poslanec, COUNT(*) AS cnt FROM poradi GROUP BY id_poslanec
         ) interps   ON interps.id_poslanec = p.id_poslanec
+        LEFT JOIN (
+            -- písemné interpelace (written, id_druh=6) from tisky, terms 167+
+            SELECT pw.id_poslanec, COUNT(*) AS cnt
+            FROM tisky t
+            JOIN poslanec pw ON pw.id_osoba = t.id_osoba AND pw.id_obdobi = t.id_org
+            WHERE t.id_druh = 6
+            GROUP BY pw.id_poslanec
+        ) written_interps ON written_interps.id_poslanec = p.id_poslanec
         GROUP BY p.id_poslanec
         ON CONFLICT (id_poslanec) DO UPDATE SET
             id_osoba              = excluded.id_osoba,
