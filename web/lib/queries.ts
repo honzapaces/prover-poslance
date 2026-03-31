@@ -36,6 +36,8 @@ export interface TermInfo {
   nazev_organu_cz: string;
   nazev_organu_en: string | null;
   term_year: number;
+  term_end_year: number | null;
+  term_number: number;
 }
 
 /** Available terms that have mp_stats data, newest first */
@@ -45,7 +47,9 @@ export async function getAvailableTerms(): Promise<TermInfo[]> {
       o.id_organ,
       o.nazev_organu_cz,
       o.nazev_organu_en,
-      CAST(STRFTIME('%Y', o.od_organ) AS INTEGER) AS term_year
+      CAST(STRFTIME('%Y', o.od_organ) AS INTEGER) AS term_year,
+      CAST(STRFTIME('%Y', o.do_organ) AS INTEGER) AS term_end_year,
+      ROW_NUMBER() OVER (ORDER BY o.id_organ ASC) AS term_number
     FROM organy o
     WHERE o.id_organ IN (SELECT DISTINCT term_id FROM mp_stats)
     ORDER BY o.id_organ DESC

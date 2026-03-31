@@ -46,7 +46,7 @@ export function TermSelector({
           value={term.id_organ}
           style={{ background: "var(--cr-blue)", color: "white" }}
         >
-          {term.nazev_organu_cz}
+          {term.term_number}. volební období ({term.term_year}–{term.term_end_year ?? ""})
         </option>
       ))}
     </select>
