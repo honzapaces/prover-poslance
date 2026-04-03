@@ -20,7 +20,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
         with:
-          python-version-file: ".python-version"
+          python-version-file: "etl/.python-version"
 
       - name: Cache ETL temp dir
         uses: actions/cache@v4
@@ -31,10 +31,12 @@ jobs:
             etl-cache-${{ runner.os }}-
 
       - name: Install dependencies
+        working-directory: etl
         run: uv sync
 
       - name: Run ETL (current term)
         if: ${{ github.event_name == 'schedule' || inputs.full_sync == false }}
+        working-directory: etl
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
@@ -42,6 +44,7 @@ jobs:
 
       - name: Run ETL (full sync)
         if: ${{ inputs.full_sync == true }}
+        working-directory: etl
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
