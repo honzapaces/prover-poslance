@@ -4,6 +4,8 @@
     "mps": "Poslanci",
     "parties": "Strany",
     "comparison": "Porovnání",
+    "bills": "Tisky",
+    "myRegion": "Můj kraj",
     "title": "Prověř poslance"
   },
   "home": {
@@ -15,6 +17,8 @@
     "search": "Hledat poslance...",
     "filterParty": "Filtrovat dle strany",
     "allParties": "Všechny strany",
+    "allRegions": "Všechny kraje",
+    "filterRegion": "Filtrovat dle kraje",
     "sortBy": "Řadit dle",
     "participation": "Účast na hlasování",
     "bills": "Tisky",
@@ -23,8 +27,10 @@
   },
   "mp": {
     "participation": "Účast na hlasování",
+    "activity": "Aktivita",
     "billsAuthored": "Podané tisky",
     "billsCosigned": "Spolupodepsané tisky",
+    "billsPassed": "Schválené tisky",
     "speeches": "Projevy",
     "interpellations": "Interpelace",
     "votesTotal": "Celkem hlasování",
@@ -33,6 +39,20 @@
     "votesExcused": "Omluven",
     "profile": "Profil",
     "viewProfile": "Zobrazit profil"
+  },
+  "bills": {
+    "title": "Parlamentní tisky",
+    "search": "Hledat tisk nebo předkladatele...",
+    "allTypes": "Všechny druhy",
+    "allStatuses": "Všechny stavy",
+    "passed": "Schváleno",
+    "pending": "Nevyřízeno",
+    "noResults": "Žádné tisky neodpovídají zadaným kritériím.",
+    "colTitle": "Název",
+    "colType": "Druh",
+    "colSubmitter": "Předkladatel",
+    "colDate": "Podáno",
+    "colStatus": "Stav"
   },
   "parties": {
     "title": "Parlamentní strany",
@@ -56,6 +76,21 @@
     "dataSource": "Data: Poslanecká sněmovna ČR",
     "sourceCode": "Zdrojový kód",
     "lastUpdated": "Aktualizováno"
+  },
+  "myRegion": {
+    "title": "Kdo mě zastupuje?",
+    "subtitle": "Zjistěte, kteří poslanci zastupují váš kraj v Poslanecké sněmovně.",
+    "locateMe": "Zjistit moji polohu",
+    "locating": "Zjišťuji polohu…",
+    "geocoding": "Identifikuji kraj…",
+    "detectedRegion": "Zjištěný kraj",
+    "chooseRegion": "Nebo vyberte kraj ručně",
+    "chooseRegionFallback": "Vyberte svůj kraj",
+    "selectPlaceholder": "— vyberte kraj —",
+    "mpCount": "{count} poslanců z kraje {region}",
+    "noMps": "Pro vybraný kraj nebyli nalezeni žádní poslanci.",
+    "errorLocation": "Nepodařilo se zjistit polohu.",
+    "errorGeocode": "Nepodařilo se identifikovat kraj."
   },
   "stats": {
     "topParticipation": "Nejvyšší účast",

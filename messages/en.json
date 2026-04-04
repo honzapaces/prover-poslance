@@ -4,6 +4,8 @@
     "mps": "MPs",
     "parties": "Parties",
     "comparison": "Compare",
+    "bills": "Bills",
+    "myRegion": "My Region",
     "title": "Check your MP"
   },
   "home": {
@@ -15,6 +17,8 @@
     "search": "Search MPs...",
     "filterParty": "Filter by party",
     "allParties": "All parties",
+    "allRegions": "All regions",
+    "filterRegion": "Filter by region",
     "sortBy": "Sort by",
     "participation": "Voting participation",
     "bills": "Bills",
@@ -23,8 +27,10 @@
   },
   "mp": {
     "participation": "Voting participation",
+    "activity": "Activity",
     "billsAuthored": "Bills authored",
     "billsCosigned": "Bills co-signed",
+    "billsPassed": "Bills passed into law",
     "speeches": "Speeches",
     "interpellations": "Interpellations",
     "votesTotal": "Total votes",
@@ -33,6 +39,20 @@
     "votesExcused": "Excused",
     "profile": "Profile",
     "viewProfile": "View profile"
+  },
+  "bills": {
+    "title": "Parliamentary Bills",
+    "search": "Search bills or submitter...",
+    "allTypes": "All types",
+    "allStatuses": "All statuses",
+    "passed": "Passed",
+    "pending": "Pending",
+    "noResults": "No bills match your criteria.",
+    "colTitle": "Title",
+    "colType": "Type",
+    "colSubmitter": "Submitter",
+    "colDate": "Submitted",
+    "colStatus": "Status"
   },
   "parties": {
     "title": "Parliamentary parties",
@@ -56,6 +76,21 @@
     "dataSource": "Data: Chamber of Deputies of the Czech Republic",
     "sourceCode": "Source code",
     "lastUpdated": "Last updated"
+  },
+  "myRegion": {
+    "title": "Who represents me?",
+    "subtitle": "Find out which MPs represent your region in the Chamber of Deputies.",
+    "locateMe": "Detect my location",
+    "locating": "Getting location…",
+    "geocoding": "Identifying region…",
+    "detectedRegion": "Detected region",
+    "chooseRegion": "Or choose region manually",
+    "chooseRegionFallback": "Choose your region",
+    "selectPlaceholder": "— select a region —",
+    "mpCount": "{count} MPs from {region}",
+    "noMps": "No MPs found for the selected region.",
+    "errorLocation": "Could not determine your location.",
+    "errorGeocode": "Could not identify the region."
   },
   "stats": {
     "topParticipation": "Highest participation",

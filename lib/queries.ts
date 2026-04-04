@@ -12,8 +12,27 @@ export interface MpStats {
   participation_pct: number;
   bills_authored: number;
   bills_cosigned: number;
+  bills_passed: number;
+  bills_passed_pct: number;
   speeches_count: number;
   interpellations_count: number;
+}
+
+export interface MpBill {
+  id_tisk: number;
+  title: string;
+  bill_type: string | null;
+  submitted_at: string | null;
+  passed: number;
+}
+
+export interface BillRow {
+  id_tisk: number;
+  title: string;
+  bill_type: string | null;
+  submitter_name: string | null;
+  submitted_at: string | null;
+  passed: number;
 }
 
 export interface MpProfile {
@@ -27,6 +46,9 @@ export interface MpProfile {
   term_year: number;
   party_name: string | null;
   party_short: string | null;
+  id_kraj: number | null;
+  kraj_name_cs: string | null;
+  kraj_name_en: string | null;
 }
 
 export type MpWithStats = MpProfile & MpStats;
@@ -40,7 +62,7 @@ export interface TermInfo {
   term_number: number;
 }
 
-/** Available terms that have mp_stats data, newest first */
+/** Available terms that have stat_mp data, newest first */
 export async function getAvailableTerms(): Promise<TermInfo[]> {
   return query<TermInfo>(`
     SELECT
@@ -50,8 +72,8 @@ export async function getAvailableTerms(): Promise<TermInfo[]> {
       CAST(STRFTIME('%Y', o.od_organ) AS INTEGER) AS term_year,
       CAST(STRFTIME('%Y', o.do_organ) AS INTEGER) AS term_end_year,
       ROW_NUMBER() OVER (ORDER BY o.id_organ ASC) AS term_number
-    FROM organy o
-    WHERE o.id_organ IN (SELECT DISTINCT term_id FROM mp_stats)
+    FROM osoba_organy o
+    WHERE o.id_organ IN (SELECT DISTINCT term_id FROM stat_mp)
     ORDER BY o.id_organ DESC
   `);
 }
@@ -62,32 +84,35 @@ export async function getMpList(termId?: number | null): Promise<MpWithStats[]> 
   return query<MpWithStats>(
     `
     SELECT
-      p.id_poslanec, p.id_osoba, p.foto,
+      p.id_poslanec, p.id_osoba, p.foto, p.id_kraj,
       CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
       o.prijmeni, o.jmeno, o.pred, o.za,
       party.nazev_organu_cz AS party_name,
       party.zkratka         AS party_short,
       s.votes_total, s.votes_present, s.votes_cast,
       s.votes_absent, s.votes_excused, s.participation_pct,
-      s.bills_authored, s.bills_cosigned,
+      s.bills_authored, s.bills_cosigned, s.bills_passed, s.bills_passed_pct,
       s.speeches_count, s.interpellations_count,
-      s.term_id
-    FROM mp_stats s
-    JOIN poslanec p  ON p.id_poslanec = s.id_poslanec
-    JOIN osoby   o  ON o.id_osoba     = p.id_osoba
-    JOIN organy  org ON org.id_organ  = p.id_obdobi
+      s.term_id,
+      k.nazev_organu_cz AS kraj_name_cs,
+      k.nazev_organu_en AS kraj_name_en
+    FROM stat_mp s
+    JOIN osoba_poslanec p  ON p.id_poslanec = s.id_poslanec
+    JOIN osoba_osoby   o  ON o.id_osoba     = p.id_osoba
+    JOIN osoba_organy  org ON org.id_organ  = p.id_obdobi
+    LEFT JOIN osoba_organy k ON k.id_organ  = p.id_kraj
     JOIN (
       SELECT z.id_osoba, o2.nazev_organu_cz, o2.zkratka
-      FROM zarazeni z
-      JOIN organy o2 ON o2.id_organ = z.id_of
-      JOIN typ_organu t ON t.id_typ_org = o2.id_typ_organu AND t.nazev_typ_org_cz LIKE '%klub%'
-      JOIN organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+      FROM osoba_zarazeni z
+      JOIN osoba_organy o2 ON o2.id_organ = z.id_of
+      JOIN osoba_typ_organu t ON t.id_typ_org = o2.id_typ_organu AND t.nazev_typ_org_cz LIKE '%klub%'
+      JOIN osoba_organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
       WHERE z.cl_funkce = 0
         AND z.od_o <= COALESCE(term_ref.do_organ, '9999-12-31')
         AND (z.do_o IS NULL OR z.do_o >= COALESCE(term_ref.do_organ, '9999-12-31'))
       GROUP BY z.id_osoba
     ) party ON party.id_osoba = p.id_osoba
-    WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+    WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
     ORDER BY o.prijmeni, o.jmeno
     `,
     [t, t]
@@ -99,15 +124,15 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
   const rows = await query<MpWithStats>(
     `
     SELECT
-      p.id_poslanec, p.id_osoba, p.foto,
+      p.id_poslanec, p.id_osoba, p.foto, p.id_kraj,
       CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
       p.web, p.email, p.telefon, p.obec, p.ulice, p.psc,
       o.prijmeni, o.jmeno, o.pred, o.za, o.narozeni,
       (
         SELECT o2.nazev_organu_cz
-        FROM zarazeni z2
-        JOIN organy o2 ON o2.id_organ = z2.id_of
-        JOIN typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
+        FROM osoba_zarazeni z2
+        JOIN osoba_organy o2 ON o2.id_organ = z2.id_of
+        JOIN osoba_typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
         WHERE z2.id_osoba = p.id_osoba AND z2.cl_funkce = 0
           AND z2.od_o <= COALESCE(org.do_organ, '9999-12-31')
           AND (z2.do_o IS NULL OR z2.do_o >= COALESCE(org.do_organ, '9999-12-31'))
@@ -115,9 +140,9 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
       ) AS party_name,
       (
         SELECT o2.zkratka
-        FROM zarazeni z2
-        JOIN organy o2 ON o2.id_organ = z2.id_of
-        JOIN typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
+        FROM osoba_zarazeni z2
+        JOIN osoba_organy o2 ON o2.id_organ = z2.id_of
+        JOIN osoba_typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
         WHERE z2.id_osoba = p.id_osoba AND z2.cl_funkce = 0
           AND z2.od_o <= COALESCE(org.do_organ, '9999-12-31')
           AND (z2.do_o IS NULL OR z2.do_o >= COALESCE(org.do_organ, '9999-12-31'))
@@ -127,11 +152,14 @@ export async function getMpById(id: number): Promise<MpWithStats | null> {
       s.votes_absent, s.votes_excused, s.participation_pct,
       s.bills_authored, s.bills_cosigned,
       s.speeches_count, s.interpellations_count,
-      s.term_id
-    FROM mp_stats s
-    JOIN poslanec p  ON p.id_poslanec = s.id_poslanec
-    JOIN osoby   o  ON o.id_osoba     = p.id_osoba
-    JOIN organy  org ON org.id_organ  = p.id_obdobi
+      s.term_id,
+      k.nazev_organu_cz AS kraj_name_cs,
+      k.nazev_organu_en AS kraj_name_en
+    FROM stat_mp s
+    JOIN osoba_poslanec p  ON p.id_poslanec = s.id_poslanec
+    JOIN osoba_osoby   o  ON o.id_osoba     = p.id_osoba
+    JOIN osoba_organy  org ON org.id_organ  = p.id_obdobi
+    LEFT JOIN osoba_organy k ON k.id_organ  = p.id_kraj
     WHERE p.id_poslanec = ?
   `,
     [id]
@@ -171,16 +199,16 @@ export async function getPartyList(termId?: number | null): Promise<PartyStats[]
       SUM(s.bills_authored)                        AS total_bills,
       SUM(s.speeches_count)                        AS total_speeches,
       SUM(s.interpellations_count)                 AS total_interpellations
-    FROM organy o
-    JOIN typ_organu t  ON t.id_typ_org   = o.id_typ_organu
+    FROM osoba_organy o
+    JOIN osoba_typ_organu t  ON t.id_typ_org   = o.id_typ_organu
                       AND t.nazev_typ_org_cz LIKE '%klub%'
-    JOIN organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
-    JOIN zarazeni z    ON z.id_of        = o.id_organ
+    JOIN osoba_organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
+    JOIN osoba_zarazeni z    ON z.id_of        = o.id_organ
                       AND z.cl_funkce    = 0
                       AND z.od_o <= COALESCE(term_ref.do_organ, '9999-12-31')
                       AND (z.do_o IS NULL OR z.do_o >= COALESCE(term_ref.do_organ, '9999-12-31'))
-    JOIN poslanec p    ON p.id_osoba     = z.id_osoba
-    JOIN mp_stats s    ON s.id_poslanec  = p.id_poslanec
+    JOIN osoba_poslanec p    ON p.id_osoba     = z.id_osoba
+    JOIN stat_mp s    ON s.id_poslanec  = p.id_poslanec
                       AND s.term_id      = term_ref.id_organ
     GROUP BY o.id_organ, o.zkratka, o.nazev_organu_cz
     ORDER BY avg_participation DESC
@@ -201,14 +229,14 @@ export async function getMpAttendanceByMonth(id: number): Promise<MonthlyAttenda
         100.0 * SUM(CASE WHEN hp.vysledek IN ('A','B','N','C','F','K') THEN 1 ELSE 0 END)
         / NULLIF(COUNT(*), 0), 1
       )                                                                              AS attendance_pct
-    FROM hl_poslanec hp
+    FROM hlasovani_poslanec hp
     JOIN (
-      SELECT id_hlasovani, datum FROM hl2021s
-      UNION ALL SELECT id_hlasovani, datum FROM hl2022s
-      UNION ALL SELECT id_hlasovani, datum FROM hl2023s
-      UNION ALL SELECT id_hlasovani, datum FROM hl2024s
-      UNION ALL SELECT id_hlasovani, datum FROM hl2025s
-      UNION ALL SELECT id_hlasovani, datum FROM hl2026s
+      SELECT id_hlasovani, datum FROM hlasovani_2021s
+      UNION ALL SELECT id_hlasovani, datum FROM hlasovani_2022s
+      UNION ALL SELECT id_hlasovani, datum FROM hlasovani_2023s
+      UNION ALL SELECT id_hlasovani, datum FROM hlasovani_2024s
+      UNION ALL SELECT id_hlasovani, datum FROM hlasovani_2025s
+      UNION ALL SELECT id_hlasovani, datum FROM hlasovani_2026s
     ) hh ON hh.id_hlasovani = hp.id_hlasovani
     WHERE hp.id_poslanec = ?
       AND hh.datum IS NOT NULL
@@ -222,7 +250,7 @@ export async function getMpAttendanceByMonth(id: number): Promise<MonthlyAttenda
 /** Last ETL run timestamp (ISO string or null) */
 export async function getLastUpdated(): Promise<string | null> {
   const rows = await query<{ last_updated: string | null }>(
-    `SELECT MAX(updated_at) AS last_updated FROM mp_stats`
+    `SELECT MAX(updated_at) AS last_updated FROM stat_mp`
   );
   return rows[0]?.last_updated ?? null;
 }
@@ -234,10 +262,10 @@ export async function getDashboardOutliers(termId?: number | null) {
   // party subquery always takes one ? binding (the term_ref coalesce)
   const partySql = `
     SELECT z.id_osoba, o2.zkratka
-    FROM zarazeni z
-    JOIN organy o2 ON o2.id_organ = z.id_of
-    JOIN typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
-    JOIN organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+    FROM osoba_zarazeni z
+    JOIN osoba_organy o2 ON o2.id_organ = z.id_of
+    JOIN osoba_typ_organu t2 ON t2.id_typ_org = o2.id_typ_organu AND t2.nazev_typ_org_cz LIKE '%klub%'
+    JOIN osoba_organy term_ref ON term_ref.id_organ = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
     WHERE z.cl_funkce = 0
       AND z.od_o <= COALESCE(term_ref.do_organ, '9999-12-31')
       AND (z.do_o IS NULL OR z.do_o >= COALESCE(term_ref.do_organ, '9999-12-31'))
@@ -255,13 +283,13 @@ export async function getDashboardOutliers(termId?: number | null) {
                CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.participation_pct
-        FROM mp_stats s
-        JOIN poslanec p ON p.id_poslanec = s.id_poslanec
-        JOIN osoby o ON o.id_osoba = p.id_osoba
-        JOIN organy org ON org.id_organ = p.id_obdobi
+        FROM stat_mp s
+        JOIN osoba_poslanec p ON p.id_poslanec = s.id_poslanec
+        JOIN osoba_osoby o ON o.id_osoba = p.id_osoba
+        JOIN osoba_organy org ON org.id_organ = p.id_obdobi
         JOIN (${partySql}) party ON party.id_osoba = p.id_osoba
         WHERE s.votes_total > 0
-          AND s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+          AND s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
         ORDER BY s.participation_pct DESC LIMIT 5
         `,
         args
@@ -272,13 +300,13 @@ export async function getDashboardOutliers(termId?: number | null) {
                CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.participation_pct
-        FROM mp_stats s
-        JOIN poslanec p ON p.id_poslanec = s.id_poslanec
-        JOIN osoby o ON o.id_osoba = p.id_osoba
-        JOIN organy org ON org.id_organ = p.id_obdobi
+        FROM stat_mp s
+        JOIN osoba_poslanec p ON p.id_poslanec = s.id_poslanec
+        JOIN osoba_osoby o ON o.id_osoba = p.id_osoba
+        JOIN osoba_organy org ON org.id_organ = p.id_obdobi
         JOIN (${partySql}) party ON party.id_osoba = p.id_osoba
         WHERE s.votes_total > 0
-          AND s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+          AND s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
         ORDER BY s.participation_pct ASC LIMIT 5
         `,
         args
@@ -289,12 +317,12 @@ export async function getDashboardOutliers(termId?: number | null) {
                CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.bills_authored
-        FROM mp_stats s
-        JOIN poslanec p ON p.id_poslanec = s.id_poslanec
-        JOIN osoby o ON o.id_osoba = p.id_osoba
-        JOIN organy org ON org.id_organ = p.id_obdobi
+        FROM stat_mp s
+        JOIN osoba_poslanec p ON p.id_poslanec = s.id_poslanec
+        JOIN osoba_osoby o ON o.id_osoba = p.id_osoba
+        JOIN osoba_organy org ON org.id_organ = p.id_obdobi
         JOIN (${partySql}) party ON party.id_osoba = p.id_osoba
-        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
         ORDER BY s.bills_authored DESC LIMIT 5
         `,
         args
@@ -305,12 +333,12 @@ export async function getDashboardOutliers(termId?: number | null) {
                CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.speeches_count
-        FROM mp_stats s
-        JOIN poslanec p ON p.id_poslanec = s.id_poslanec
-        JOIN osoby o ON o.id_osoba = p.id_osoba
-        JOIN organy org ON org.id_organ = p.id_obdobi
+        FROM stat_mp s
+        JOIN osoba_poslanec p ON p.id_poslanec = s.id_poslanec
+        JOIN osoba_osoby o ON o.id_osoba = p.id_osoba
+        JOIN osoba_organy org ON org.id_organ = p.id_obdobi
         JOIN (${partySql}) party ON party.id_osoba = p.id_osoba
-        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
         ORDER BY s.speeches_count DESC LIMIT 5
         `,
         args
@@ -321,12 +349,12 @@ export async function getDashboardOutliers(termId?: number | null) {
                CAST(STRFTIME('%Y', org.od_organ) AS INTEGER) AS term_year,
                party.zkratka AS party_short,
                s.interpellations_count
-        FROM mp_stats s
-        JOIN poslanec p ON p.id_poslanec = s.id_poslanec
-        JOIN osoby o ON o.id_osoba = p.id_osoba
-        JOIN organy org ON org.id_organ = p.id_obdobi
+        FROM stat_mp s
+        JOIN osoba_poslanec p ON p.id_poslanec = s.id_poslanec
+        JOIN osoba_osoby o ON o.id_osoba = p.id_osoba
+        JOIN osoba_organy org ON org.id_organ = p.id_obdobi
         JOIN (${partySql}) party ON party.id_osoba = p.id_osoba
-        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM mp_stats))
+        WHERE s.term_id = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
         ORDER BY s.interpellations_count DESC LIMIT 5
         `,
         args
@@ -334,4 +362,48 @@ export async function getDashboardOutliers(termId?: number | null) {
     ]);
 
   return { topParticipation, bottomParticipation, topBills, topSpeeches, topInterpellations };
+}
+
+/** Bills authored by a specific MP (scoped to their term) */
+export async function getMpBills(id_poslanec: number): Promise<MpBill[]> {
+  return query<MpBill>(
+    `
+    SELECT
+      t.id_tisk,
+      COALESCE(NULLIF(TRIM(t.nazev_tisku), ''), NULLIF(TRIM(t.uplny_nazev_tisku), ''), '?') AS title,
+      d.nazev_druh AS bill_type,
+      t.predlozeno  AS submitted_at,
+      CASE WHEN EXISTS (SELECT 1 FROM tisk_sb_pre sbp WHERE sbp.id_tisk = t.id_tisk) THEN 1 ELSE 0 END AS passed
+    FROM tisk_tisky t
+    JOIN tisk_predkladatel tp ON tp.id_tisk = t.id_tisk
+    JOIN osoba_poslanec p ON p.id_osoba = tp.id_osoba AND p.id_poslanec = ?
+    LEFT JOIN tisk_druh d ON d.id_druh = t.id_druh
+    WHERE t.id_org_obd = p.id_obdobi
+    ORDER BY t.predlozeno DESC
+    `,
+    [id_poslanec]
+  );
+}
+
+/** Full bill list for a given term, for the bills list page */
+export async function getBillsList(termId?: number | null): Promise<BillRow[]> {
+  const t = termId ?? null;
+  return query<BillRow>(
+    `
+    SELECT
+      t.id_tisk,
+      COALESCE(NULLIF(TRIM(t.nazev_tisku), ''), NULLIF(TRIM(t.uplny_nazev_tisku), ''), '?') AS title,
+      d.nazev_druh  AS bill_type,
+      o.prijmeni || ' ' || o.jmeno AS submitter_name,
+      t.predlozeno  AS submitted_at,
+      CASE WHEN EXISTS (SELECT 1 FROM tisk_sb_pre sbp WHERE sbp.id_tisk = t.id_tisk) THEN 1 ELSE 0 END AS passed
+    FROM tisk_tisky t
+    LEFT JOIN tisk_druh d  ON d.id_druh   = t.id_druh
+    LEFT JOIN osoba_osoby o ON o.id_osoba  = t.id_osoba
+    WHERE t.id_org_obd = COALESCE(?, (SELECT MAX(term_id) FROM stat_mp))
+      AND t.id_druh != 6
+    ORDER BY t.predlozeno DESC
+    `,
+    [t]
+  );
 }

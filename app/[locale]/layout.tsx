@@ -90,6 +90,20 @@ export default async function LocaleLayout({
             >
               {t.nav.comparison}
             </Link>
+            <Link
+              href={`/${locale}/tisky`}
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
+            >
+              {t.nav.bills}
+            </Link>
+            <Link
+              href={`/${locale}/muj-kraj`}
+              style={{ color: "rgba(255,255,255,0.75)" }}
+              className="text-sm font-medium tracking-wider uppercase px-3 py-1 rounded transition-colors hover:text-white"
+            >
+              {t.nav.myRegion}
+            </Link>
 
             {/* Term selector + Language switcher */}
             <div className="ml-auto flex items-center gap-3">
