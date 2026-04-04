@@ -28,6 +28,7 @@ const controlStyle: React.CSSProperties = {
 export function MpListClient({ mps, locale, t }: Props) {
   const [search, setSearch] = useState("");
   const [party, setParty] = useState("all");
+  const [region, setRegion] = useState("all");
   const [sortKey, setSortKey] = useState<SortKey>("participation_pct");
 
   const parties = useMemo(() => {
@@ -38,6 +39,21 @@ export function MpListClient({ mps, locale, t }: Props) {
     return Array.from(set).sort();
   }, [mps]);
 
+  const regions = useMemo(() => {
+    const lang = locale === "cs" ? "cs" : "en";
+    const map = new Map<number, string>();
+    for (const mp of mps) {
+      if (mp.id_kraj != null && !map.has(mp.id_kraj)) {
+        map.set(mp.id_kraj, lang === "cs"
+          ? (mp.kraj_name_cs ?? String(mp.id_kraj))
+          : (mp.kraj_name_en ?? String(mp.id_kraj)));
+      }
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, label]) => ({ id, label }));
+  }, [mps, locale]);
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return mps
@@ -45,10 +61,11 @@ export function MpListClient({ mps, locale, t }: Props) {
         const name = `${mp.prijmeni} ${mp.jmeno}`.toLowerCase();
         const matchSearch = !q || name.includes(q);
         const matchParty = party === "all" || mp.party_short === party;
-        return matchSearch && matchParty;
+        const matchRegion = region === "all" || String(mp.id_kraj) === region;
+        return matchSearch && matchParty && matchRegion;
       })
       .sort((a, b) => (b[sortKey] ?? 0) - (a[sortKey] ?? 0));
-  }, [mps, search, party, sortKey]);
+  }, [mps, search, party, region, sortKey]);
 
   const sortOptions: { key: SortKey; label: string }[] = [
     { key: "participation_pct", label: t.mps.participation },
@@ -84,6 +101,20 @@ export function MpListClient({ mps, locale, t }: Props) {
           {parties.map((p) => (
             <option key={p} value={p}>
               {p}
+            </option>
+          ))}
+        </select>
+        <select
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+          style={controlStyle}
+          onFocus={(e) => (e.target.style.borderColor = "var(--cr-blue)")}
+          onBlur={(e) => (e.target.style.borderColor = "var(--cr-border)")}
+        >
+          <option value="all">{t.mps.allRegions}</option>
+          {regions.map((r) => (
+            <option key={r.id} value={String(r.id)}>
+              {r.label}
             </option>
           ))}
         </select>

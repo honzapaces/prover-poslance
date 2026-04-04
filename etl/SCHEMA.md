@@ -6,68 +6,68 @@ See `erd.md` for an entity-relationship diagram.
 ## Table of Contents
 
 - [People & Organisation](#people-organisation)
-  - [osoby](#osoby)
-  - [poslanec](#poslanec)
-  - [pkgps](#pkgps)
-  - [zarazeni](#zarazeni)
+  - [osoba_osoby](#osoba_osoby)
+  - [osoba_poslanec](#osoba_poslanec)
+  - [osoba_pkgps](#osoba_pkgps)
+  - [osoba_zarazeni](#osoba_zarazeni)
   - [osoba_extra](#osoba_extra)
-  - [organy](#organy)
-  - [typ_organu](#typ_organu)
-  - [funkce](#funkce)
-  - [typ_funkce](#typ_funkce)
+  - [osoba_organy](#osoba_organy)
+  - [osoba_typ_organu](#osoba_typ_organu)
+  - [osoba_funkce](#osoba_funkce)
+  - [osoba_typ_funkce](#osoba_typ_funkce)
 - [Voting](#voting)
-  - [hl_hlasovani](#hl_hlasovani)
-  - [hl_poslanec](#hl_poslanec)
-  - [hl_zposlanec](#hl_zposlanec)
-  - [hl_vazby](#hl_vazby)
-  - [hl_check](#hl_check)
-  - [zmatecne](#zmatecne)
-  - [omluvy](#omluvy)
-  - [hl\<YEAR\>s (1993–2026)](#year-specific-voting-tables)
+  - [hlasovani_session](#hlasovani_session)
+  - [hlasovani_poslanec](#hlasovani_poslanec)
+  - [hlasovani_zposlanec](#hlasovani_zposlanec)
+  - [hlasovani_vazby](#hlasovani_vazby)
+  - [hlasovani_check](#hlasovani_check)
+  - [hlasovani_zmatecne](#hlasovani_zmatecne)
+  - [hlasovani_omluvy](#hlasovani_omluvy)
+  - [hlasovani\_\<YEAR\>s (1993–2026)](#year-specific-voting-tables)
 - [Bills (Tisky)](#bills-tisky)
-  - [tisky](#tisky)
-  - [druh_tisku](#druh_tisku)
-  - [stavy](#stavy)
-  - [typ_stavu](#typ_stavu)
-  - [typ_zakon](#typ_zakon)
-  - [predkladatel](#predkladatel)
-  - [navrh_podpis](#navrh_podpis)
-  - [tisky_za](#tisky_za)
+  - [tisk_tisky](#tisk_tisky)
+  - [tisk_druh](#tisk_druh)
+  - [tisk_stavy](#tisk_stavy)
+  - [tisk_typ_stavu](#tisk_typ_stavu)
+  - [tisk_typ_zakon](#tisk_typ_zakon)
+  - [tisk_predkladatel](#tisk_predkladatel)
+  - [tisk_navrh_podpis](#tisk_navrh_podpis)
+  - [tisk_za](#tisk_za)
   - [tisk_eklep](#tisk_eklep)
-  - [tz_eklep](#tz_eklep)
-  - [hist](#hist)
-  - [hist_vybory](#hist_vybory)
-  - [vysledek](#vysledek)
-  - [prechody](#prechody)
-  - [sbirka](#sbirka)
-  - [sb_pre](#sb_pre)
+  - [tisk_tz_eklep](#tisk_tz_eklep)
+  - [tisk_hist](#tisk_hist)
+  - [tisk_hist_vybory](#tisk_hist_vybory)
+  - [tisk_vysledek](#tisk_vysledek)
+  - [tisk_prechody](#tisk_prechody)
+  - [tisk_sbirka](#tisk_sbirka)
+  - [tisk_sb_pre](#tisk_sb_pre)
 - [Sessions (Schůze)](#sessions-schůze)
-  - [schuze](#schuze)
-  - [bod_schuze](#bod_schuze)
-  - [bod_stav](#bod_stav)
+  - [schuze_schuze](#schuze_schuze)
+  - [schuze_bod](#schuze_bod)
+  - [schuze_bod_stav](#schuze_bod_stav)
   - [schuze_stav](#schuze_stav)
 - [Interpellations](#interpellations)
-  - [los_interpelaci](#los_interpelaci)
-  - [poradi](#poradi)
-  - [uitypv](#uitypv)
-  - [ui_stav](#ui_stav)
+  - [interpelace_los](#interpelace_los)
+  - [interpelace_poradi](#interpelace_poradi)
+  - [interpelace_typ](#interpelace_typ)
+  - [interpelace_stav](#interpelace_stav)
 - [Speeches & Stenography](#speeches-stenography)
-  - [steno](#steno)
+  - [steno_steno](#steno_steno)
   - [steno_bod](#steno_bod)
-  - [rec](#rec)
-  - [se_tisk](#se_tisk)
-  - [se_druh_tisku](#se_druh_tisku)
-  - [psp2senat](#psp2senat)
+  - [steno_rec](#steno_rec)
+  - [steno_se_tisk](#steno_se_tisk)
+  - [steno_se_druh](#steno_se_druh)
+  - [steno_psp2senat](#steno_psp2senat)
 - [Lookup / Reference](#lookup-reference)
-  - [typ_akce](#typ_akce)
-  - [sd_dokument](#sd_dokument)
-  - [druh_predpisu](#druh_predpisu)
+  - [ref_typ_akce](#ref_typ_akce)
+  - [ref_sd_dokument](#ref_sd_dokument)
+  - [ref_druh_predpisu](#ref_druh_predpisu)
 - [Year-specific voting tables](#year-specific-voting-tables)
 - [Notes](#notes)
 
 ## People & Organisation
 
-### osoby
+### osoba_osoby
 
 Physical persons (MPs, ministers, substitutes).
 
@@ -83,9 +83,9 @@ Physical persons (MPs, ministers, substitutes).
 | `zmena` | TEXT |  |
 | `umrti` | TEXT |  |
 
-### poslanec
+### osoba_poslanec
 
-MP record for one parliamentary term. One person → many poslanec rows across terms.
+MP record for one parliamentary term. One person → many rows across terms.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -105,7 +105,7 @@ MP record for one parliamentary term. One person → many poslanec rows across t
 | `facebook` | TEXT |  |
 | `foto` | INTEGER |  |
 
-### pkgps
+### osoba_pkgps
 
 Constituency GPS coordinates for each MP.
 
@@ -116,7 +116,7 @@ Constituency GPS coordinates for each MP.
 | `sirka` | TEXT |  |
 | `delka` | TEXT |  |
 
-### zarazeni
+### osoba_zarazeni
 
 Club/committee membership intervals for a person.
 
@@ -143,7 +143,7 @@ Extra external IDs or URLs for a person (e.g. social media).
 | `strana` | TEXT |  |
 | `id_external` | INTEGER |  |
 
-### organy
+### osoba_organy
 
 Parliamentary bodies: chambers, committees, clubs, governments.
 
@@ -160,7 +160,7 @@ Parliamentary bodies: chambers, committees, clubs, governments.
 | `priorita` | INTEGER |  |
 | `cl_organ_base` | INTEGER |  |
 
-### typ_organu
+### osoba_typ_organu
 
 Lookup: body type (chamber, committee, club, …).
 
@@ -173,7 +173,7 @@ Lookup: body type (chamber, committee, club, …).
 | `typ_org_obecny` | INTEGER |  |
 | `priorita` | INTEGER |  |
 
-### funkce
+### osoba_funkce
 
 Named roles within a body (Chairman, Deputy, …).
 
@@ -185,7 +185,7 @@ Named roles within a body (Chairman, Deputy, …).
 | `nazev_funkce_cz` | TEXT |  |
 | `priorita` | INTEGER |  |
 
-### typ_funkce
+### osoba_typ_funkce
 
 Lookup: function category.
 
@@ -200,9 +200,9 @@ Lookup: function category.
 
 ## Voting
 
-### hl_hlasovani
+### hlasovani_session
 
-One row per vote session. Also used as schema for hl<YEAR>s tables.
+One row per vote session. Also used as schema for hlasovani_<YEAR>s tables.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -224,7 +224,7 @@ One row per vote session. Also used as schema for hl<YEAR>s tables.
 | `nazev_dlouhy` | TEXT |  |
 | `nazev_kratky` | TEXT |  |
 
-### hl_poslanec
+### hlasovani_poslanec
 
 Individual MP vote result for one session. `vysledek` codes: A=yes, B/N=no, C=abstain, F=registered but did not vote, @=absent, M=excused (omluven), W=before oath, K=abstain variant.
 
@@ -234,7 +234,7 @@ Individual MP vote result for one session. `vysledek` codes: A=yes, B/N=no, C=ab
 | `id_hlasovani` | INTEGER | PK (composite) |
 | `vysledek` | TEXT |  |
 
-### hl_zposlanec
+### hlasovani_zposlanec
 
 Substitute MP vote records.
 
@@ -244,7 +244,7 @@ Substitute MP vote records.
 | `id_osoba` | INTEGER | PK (composite) |
 | `mode` | INTEGER |  |
 
-### hl_vazby
+### hlasovani_vazby
 
 Links a vote session to additional organs.
 
@@ -254,7 +254,7 @@ Links a vote session to additional organs.
 | `turn` | INTEGER | PK (composite) |
 | `typ` | INTEGER |  |
 
-### hl_check
+### hlasovani_check
 
 Vote integrity / validation metadata.
 
@@ -266,7 +266,7 @@ Vote integrity / validation metadata.
 | `id_h2` | INTEGER |  |
 | `id_h3` | INTEGER |  |
 
-### zmatecne
+### hlasovani_zmatecne
 
 Flags a vote session as procedurally void.
 
@@ -274,7 +274,7 @@ Flags a vote session as procedurally void.
 |--------|------|-------|
 | `id_hlasovani` | INTEGER | PK |
 
-### omluvy
+### hlasovani_omluvy
 
 Formal advance excuse filed by an MP for a specific day. `od`/`do` = time range (nullable).
 
@@ -288,7 +288,7 @@ Formal advance excuse filed by an MP for a specific day. `od`/`do` = time range 
 
 ## Bills (Tisky)
 
-### tisky
+### tisk_tisky
 
 Parliamentary prints (bills, reports, petitions, …).
 
@@ -319,7 +319,7 @@ Parliamentary prints (bills, reports, petitions, …).
 | `is_sdv` | INTEGER |  |
 | `status` | INTEGER |  |
 
-### druh_tisku
+### tisk_druh
 
 Lookup: print type.
 
@@ -329,7 +329,7 @@ Lookup: print type.
 | `druh_t` | TEXT |  |
 | `nazev_druh` | TEXT |  |
 
-### stavy
+### tisk_stavy
 
 Lookup: bill status codes.
 
@@ -342,7 +342,7 @@ Lookup: bill status codes.
 | `lhuta` | INTEGER |  |
 | `lhuta_where` | INTEGER |  |
 
-### typ_stavu
+### tisk_typ_stavu
 
 Lookup: status type.
 
@@ -351,7 +351,7 @@ Lookup: status type.
 | `id_typ` | INTEGER | PK |
 | `popis_stavu` | TEXT |  |
 
-### typ_zakon
+### tisk_typ_zakon
 
 Lookup: law type.
 
@@ -360,7 +360,7 @@ Lookup: law type.
 | `id_navrh` | INTEGER | PK |
 | `druh_navrhovatele` | TEXT |  |
 
-### predkladatel
+### tisk_predkladatel
 
 Primary submitter(s) of a bill.
 
@@ -371,7 +371,7 @@ Primary submitter(s) of a bill.
 | `poradi` | INTEGER |  |
 | `typ` | INTEGER |  |
 
-### navrh_podpis
+### tisk_navrh_podpis
 
 Co-signatories of a bill.
 
@@ -382,7 +382,7 @@ Co-signatories of a bill.
 | `stav` | INTEGER |  |
 | `datum` | TEXT |  |
 
-### tisky_za
+### tisk_za
 
 Bill versions / amendments.
 
@@ -418,7 +418,7 @@ EKLEP (government legislative plan) entries linked to prints.
 | `id_tisk` | INTEGER | PK (composite) |
 | `cislo_za` | INTEGER | PK (composite) |
 
-### tz_eklep
+### tisk_tz_eklep
 
 EKLEP entries linked to bill versions.
 
@@ -431,7 +431,7 @@ EKLEP entries linked to bill versions.
 | `id_tisk` | INTEGER | PK (composite) |
 | `cislo_za` | INTEGER | PK (composite) |
 
-### hist
+### tisk_hist
 
 Legislative history events for a bill.
 
@@ -453,7 +453,7 @@ Legislative history events for a bill.
 | `zaver_sb_cislo` | INTEGER |  |
 | `poznamka` | TEXT |  |
 
-### hist_vybory
+### tisk_hist_vybory
 
 Committee participation in a history event.
 
@@ -467,7 +467,7 @@ Committee participation in a history event.
 | `poradi` | INTEGER |  |
 | `garancni` | INTEGER |  |
 
-### vysledek
+### tisk_vysledek
 
 Lookup: legislative result codes.
 
@@ -476,7 +476,7 @@ Lookup: legislative result codes.
 | `id_vysledek` | INTEGER | PK |
 | `druh_vysledek` | TEXT |  |
 
-### prechody
+### tisk_prechody
 
 Lookup: legislative transition labels.
 
@@ -488,7 +488,7 @@ Lookup: legislative transition labels.
 | `id_akce` | INTEGER |  |
 | `typ_prechodu` | INTEGER |  |
 
-### sbirka
+### tisk_sbirka
 
 Published law collection entries.
 
@@ -502,7 +502,7 @@ Published law collection entries.
 | `datum` | TEXT |  |
 | `castka` | INTEGER |  |
 
-### sb_pre
+### tisk_sb_pre
 
 Links a collection entry to its source prints.
 
@@ -517,7 +517,7 @@ Links a collection entry to its source prints.
 
 ## Sessions (Schůze)
 
-### schuze
+### schuze_schuze
 
 Plenary session (schůze) header.
 
@@ -531,7 +531,7 @@ Plenary session (schůze) header.
 | `aktualizace` | TEXT |  |
 | `pozvanka` | INTEGER |  |
 
-### bod_schuze
+### schuze_bod
 
 Agenda item within a session.
 
@@ -553,7 +553,7 @@ Agenda item within a session.
 | `id_sd` | INTEGER |  |
 | `zkratka` | TEXT |  |
 
-### bod_stav
+### schuze_bod_stav
 
 Lookup: agenda item status.
 
@@ -577,7 +577,7 @@ Status history of a session.
 
 ## Interpellations
 
-### los_interpelaci
+### interpelace_los
 
 Interpellation lottery draw session.
 
@@ -592,7 +592,7 @@ Interpellation lottery draw session.
 | `schuze` | INTEGER |  |
 | `id_org` | INTEGER |  |
 
-### poradi
+### interpelace_poradi
 
 Ordered interpellation within a lottery.
 
@@ -607,7 +607,7 @@ Ordered interpellation within a lottery.
 | `priorita` | INTEGER |  |
 | `vec32` | TEXT |  |
 
-### uitypv
+### interpelace_typ
 
 Interpellation type assignment.
 
@@ -617,7 +617,7 @@ Interpellation type assignment.
 | `nazev` | TEXT |  |
 | `priorita` | INTEGER |  |
 
-### ui_stav
+### interpelace_stav
 
 Status of an interpellation.
 
@@ -629,7 +629,7 @@ Status of an interpellation.
 
 ## Speeches & Stenography
 
-### steno
+### steno_steno
 
 Stenographic session header.
 
@@ -654,7 +654,7 @@ Stenographic record for one agenda item.
 | `aname` | INTEGER | PK (composite) |
 | `id_bod` | INTEGER |  |
 
-### rec
+### steno_rec
 
 Individual speech record (speaker + session + item).
 
@@ -666,7 +666,7 @@ Individual speech record (speaker + session + item).
 | `id_bod` | INTEGER |  |
 | `druh` | INTEGER |  |
 
-### se_tisk
+### steno_se_tisk
 
 Senate print cross-reference.
 
@@ -680,7 +680,7 @@ Senate print cross-reference.
 | `anotace` | TEXT |  |
 | `nazev_tisku` | TEXT |  |
 
-### se_druh_tisku
+### steno_se_druh
 
 Senate print type lookup.
 
@@ -689,7 +689,7 @@ Senate print type lookup.
 | `id_druh` | INTEGER | PK |
 | `nazev_druhu` | TEXT |  |
 
-### psp2senat
+### steno_psp2senat
 
 Mapping from Chamber print to Senate equivalent.
 
@@ -701,7 +701,7 @@ Mapping from Chamber print to Senate equivalent.
 
 ## Lookup / Reference
 
-### typ_akce
+### ref_typ_akce
 
 Lookup: action type.
 
@@ -710,7 +710,7 @@ Lookup: action type.
 | `id_akce` | INTEGER | PK |
 | `popis_akce` | TEXT |  |
 
-### sd_dokument
+### ref_sd_dokument
 
 Shared document metadata.
 
@@ -726,7 +726,7 @@ Shared document metadata.
 | `id_x` | INTEGER |  |
 | `end` | TEXT |  |
 
-### druh_predpisu
+### ref_druh_predpisu
 
 Lookup: regulation type.
 
@@ -738,49 +738,49 @@ Lookup: regulation type.
 
 ## Year-specific voting tables
 
-Tables `hl1993s` through `hl2026s` each hold one year's plenary vote sessions.
-They share the same schema as [`hl_hlasovani`](#hl_hlasovani) and use `id_hlasovani` as their primary key.
+Tables `hlasovani_1993s` through `hlasovani_2026s` each hold one year's plenary vote sessions.
+They share the same schema as [`hlasovani_session`](#hlasovani_session) and use `id_hlasovani` as their primary key.
 
 | Table | Description |
 |-------|-------------|
-| `hl1993s` | Plenary vote sessions for 1993 |
-| `hl1994s` | Plenary vote sessions for 1994 |
-| `hl1995s` | Plenary vote sessions for 1995 |
-| `hl1996s` | Plenary vote sessions for 1996 |
-| `hl1997s` | Plenary vote sessions for 1997 |
-| `hl1998s` | Plenary vote sessions for 1998 |
-| `hl1999s` | Plenary vote sessions for 1999 |
-| `hl2000s` | Plenary vote sessions for 2000 |
-| `hl2001s` | Plenary vote sessions for 2001 |
-| `hl2002s` | Plenary vote sessions for 2002 |
-| `hl2003s` | Plenary vote sessions for 2003 |
-| `hl2004s` | Plenary vote sessions for 2004 |
-| `hl2005s` | Plenary vote sessions for 2005 |
-| `hl2006s` | Plenary vote sessions for 2006 |
-| `hl2007s` | Plenary vote sessions for 2007 |
-| `hl2008s` | Plenary vote sessions for 2008 |
-| `hl2009s` | Plenary vote sessions for 2009 |
-| `hl2010s` | Plenary vote sessions for 2010 |
-| `hl2011s` | Plenary vote sessions for 2011 |
-| `hl2012s` | Plenary vote sessions for 2012 |
-| `hl2013s` | Plenary vote sessions for 2013 |
-| `hl2014s` | Plenary vote sessions for 2014 |
-| `hl2015s` | Plenary vote sessions for 2015 |
-| `hl2016s` | Plenary vote sessions for 2016 |
-| `hl2017s` | Plenary vote sessions for 2017 |
-| `hl2018s` | Plenary vote sessions for 2018 |
-| `hl2019s` | Plenary vote sessions for 2019 |
-| `hl2020s` | Plenary vote sessions for 2020 |
-| `hl2021s` | Plenary vote sessions for 2021 |
-| `hl2022s` | Plenary vote sessions for 2022 |
-| `hl2023s` | Plenary vote sessions for 2023 |
-| `hl2024s` | Plenary vote sessions for 2024 |
-| `hl2025s` | Plenary vote sessions for 2025 |
-| `hl2026s` | Plenary vote sessions for 2026 |
+| `hlasovani_1993s` | Plenary vote sessions for 1993 |
+| `hlasovani_1994s` | Plenary vote sessions for 1994 |
+| `hlasovani_1995s` | Plenary vote sessions for 1995 |
+| `hlasovani_1996s` | Plenary vote sessions for 1996 |
+| `hlasovani_1997s` | Plenary vote sessions for 1997 |
+| `hlasovani_1998s` | Plenary vote sessions for 1998 |
+| `hlasovani_1999s` | Plenary vote sessions for 1999 |
+| `hlasovani_2000s` | Plenary vote sessions for 2000 |
+| `hlasovani_2001s` | Plenary vote sessions for 2001 |
+| `hlasovani_2002s` | Plenary vote sessions for 2002 |
+| `hlasovani_2003s` | Plenary vote sessions for 2003 |
+| `hlasovani_2004s` | Plenary vote sessions for 2004 |
+| `hlasovani_2005s` | Plenary vote sessions for 2005 |
+| `hlasovani_2006s` | Plenary vote sessions for 2006 |
+| `hlasovani_2007s` | Plenary vote sessions for 2007 |
+| `hlasovani_2008s` | Plenary vote sessions for 2008 |
+| `hlasovani_2009s` | Plenary vote sessions for 2009 |
+| `hlasovani_2010s` | Plenary vote sessions for 2010 |
+| `hlasovani_2011s` | Plenary vote sessions for 2011 |
+| `hlasovani_2012s` | Plenary vote sessions for 2012 |
+| `hlasovani_2013s` | Plenary vote sessions for 2013 |
+| `hlasovani_2014s` | Plenary vote sessions for 2014 |
+| `hlasovani_2015s` | Plenary vote sessions for 2015 |
+| `hlasovani_2016s` | Plenary vote sessions for 2016 |
+| `hlasovani_2017s` | Plenary vote sessions for 2017 |
+| `hlasovani_2018s` | Plenary vote sessions for 2018 |
+| `hlasovani_2019s` | Plenary vote sessions for 2019 |
+| `hlasovani_2020s` | Plenary vote sessions for 2020 |
+| `hlasovani_2021s` | Plenary vote sessions for 2021 |
+| `hlasovani_2022s` | Plenary vote sessions for 2022 |
+| `hlasovani_2023s` | Plenary vote sessions for 2023 |
+| `hlasovani_2024s` | Plenary vote sessions for 2024 |
+| `hlasovani_2025s` | Plenary vote sessions for 2025 |
+| `hlasovani_2026s` | Plenary vote sessions for 2026 |
 
 ## Notes
 
-### `vysledek` vote result codes (hl_poslanec)
+### `vysledek` vote result codes (hlasovani_poslanec)
 
 | Code | Meaning |
 |------|---------|
@@ -793,7 +793,7 @@ They share the same schema as [`hl_hlasovani`](#hl_hlasovani) and use `id_hlasov
 | `W`  | Před slibem — Before taking the oath (new MP) |
 | `K`  | Zdržel / nehlasoval variant |
 
-**Participation buckets used in `mp_stats`:**
+**Participation buckets used in `stat_mp`:**
 - `present` = A B C F K (was registered, whether or not they pressed a button)
 - `cast` = A B C (pressed a button with clear intent)
 - `absent` = @ (not registered at all)

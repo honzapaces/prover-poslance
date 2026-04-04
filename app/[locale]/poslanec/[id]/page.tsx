@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { hasLocale, getDictionary } from "@/lib/i18n";
-import { getMpById, getMpAttendanceByMonth } from "@/lib/queries";
+import { getMpById, getMpAttendanceByMonth, getMpBills } from "@/lib/queries";
 import { AttendanceChart } from "@/components/AttendanceChart";
 
 function StatBar({
@@ -48,9 +48,10 @@ export default async function MpProfilePage({
   if (!hasLocale(locale)) notFound();
   const t = getDictionary(locale);
 
-  const [mp, attendance] = await Promise.all([
+  const [mp, attendance, bills] = await Promise.all([
     getMpById(Number(id)),
     getMpAttendanceByMonth(Number(id)),
+    getMpBills(Number(id)),
   ]);
   if (!mp) notFound();
 
@@ -145,7 +146,7 @@ export default async function MpProfilePage({
           >
             {fullName}
           </h1>
-          {mp.party_name && (
+          {(mp.party_name || mp.kraj_name_cs) && (
             <p
               style={{
                 color: "rgba(255,255,255,0.7)",
@@ -153,7 +154,12 @@ export default async function MpProfilePage({
                 marginBottom: "0.875rem",
               }}
             >
-              {mp.party_name}
+              {[
+                mp.party_name,
+                locale === "cs" ? mp.kraj_name_cs : (mp.kraj_name_en ?? mp.kraj_name_cs),
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </p>
           )}
           <div className="flex flex-wrap gap-3">
@@ -306,7 +312,7 @@ export default async function MpProfilePage({
       )}
 
       {/* Activity stats */}
-      <div className="cr-card p-6">
+      <div className="cr-card p-6 mb-4">
         <h2
           className="section-accent"
           style={{
@@ -317,7 +323,7 @@ export default async function MpProfilePage({
             marginBottom: "1.25rem",
           }}
         >
-          Aktivita
+          {t.mp.activity}
         </h2>
         <div className="space-y-5">
           <StatBar
@@ -331,6 +337,11 @@ export default async function MpProfilePage({
             max={Math.max(mp.bills_cosigned, 50)}
           />
           <StatBar
+            label={t.mp.billsPassed}
+            value={mp.bills_passed}
+            max={Math.max(mp.bills_authored, 1)}
+          />
+          <StatBar
             label={t.mp.speeches}
             value={mp.speeches_count}
             max={Math.max(mp.speeches_count, 100)}
@@ -342,6 +353,83 @@ export default async function MpProfilePage({
           />
         </div>
       </div>
+
+      {/* Bills list */}
+      {bills.length > 0 && (
+        <div className="cr-card p-6">
+          <h2
+            className="section-accent"
+            style={{
+              fontFamily: "'EB Garamond', serif",
+              color: "var(--cr-text)",
+              fontWeight: 700,
+              fontSize: "1.2rem",
+              marginBottom: "1.25rem",
+            }}
+          >
+            {t.mp.billsAuthored} ({bills.length})
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {bills.map((bill) => (
+              <a
+                key={bill.id_tisk}
+                href={`https://www.psp.cz/sqw/tisky.sqw?O=10&PT=${bill.id_tisk}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "0.75rem",
+                  padding: "0.75rem",
+                  borderRadius: "4px",
+                  background: bill.passed ? "var(--cr-blue-wash)" : "transparent",
+                  border: "1px solid var(--cr-border)",
+                  textDecoration: "none",
+                  transition: "border-color 0.15s",
+                }}
+                className="hover:border-blue-300"
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p
+                    style={{
+                      color: "var(--cr-text)",
+                      fontSize: "0.875rem",
+                      fontWeight: 500,
+                      lineHeight: 1.4,
+                      marginBottom: "0.25rem",
+                    }}
+                  >
+                    {bill.title}
+                  </p>
+                  <div className="flex flex-wrap gap-2" style={{ fontSize: "0.75rem", color: "var(--cr-text-muted)" }}>
+                    {bill.bill_type && <span>{bill.bill_type}</span>}
+                    {bill.submitted_at && (
+                      <span>{new Date(bill.submitted_at).toLocaleDateString(locale === "cs" ? "cs-CZ" : "en-GB", { year: "numeric", month: "short", day: "numeric" })}</span>
+                    )}
+                  </div>
+                </div>
+                {bill.passed === 1 && (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontSize: "0.7rem",
+                      fontWeight: 600,
+                      color: "var(--cr-blue)",
+                      background: "var(--cr-blue-tint)",
+                      padding: "0.2rem 0.5rem",
+                      borderRadius: "3px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                    }}
+                  >
+                    {t.bills.passed}
+                  </span>
+                )}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
